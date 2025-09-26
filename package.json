@@ -1,0 +1,20 @@
+{
+  "name": "kontent-admin-ui",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Admin UI to change workflow steps or delete items/variants in Kontent.ai",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@kontent-ai/management-sdk": "^5.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

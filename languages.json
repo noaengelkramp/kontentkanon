@@ -1,0 +1,458 @@
+{
+    "languages": [
+        {
+            "id": "00000000-0000-0000-0000-000000000000",
+            "name": "Global_English",
+            "codename": "English",
+            "is_active": true,
+            "is_default": true,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "e3032d73-6262-959b-2a6b-c3b362b3ff29",
+            "name": "de_AT",
+            "codename": "de_AT",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "9aed35a3-eada-4c87-a117-e102aed96bad",
+            "name": "de_BE",
+            "codename": "de_BE",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "7ab8a559-21b8-fa14-cafa-8c06a9f2a36f",
+            "name": "fr_BE",
+            "codename": "fr_BE",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "17363d33-5fec-a8f4-8d9f-64f8a21a9cdf",
+            "name": "nl_BE",
+            "codename": "nl_BE",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "641f72cf-ee0c-efbc-a120-2dd99f510a1d",
+            "name": "cs_CZ",
+            "codename": "cs_CZ",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "6dd26ecb-266a-6891-fda0-4ace70c12ece",
+            "name": "de_CH",
+            "codename": "de_CH",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "be60c470-3e30-2b93-375b-796b93e3eb26",
+            "name": "fr_CH",
+            "codename": "fr_CH",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "4ca566c9-bf80-412c-48c5-2e664054d56d",
+            "name": "it_CH",
+            "codename": "it_CH",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "e18f42b8-bd8e-b8c0-317b-2568d2c7553b",
+            "name": "de_DE",
+            "codename": "de_DE",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "b32880af-183f-491c-9193-3336f677e360",
+            "name": "en_DE",
+            "codename": "en_DE",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "70d58178-88c1-4178-bc2f-b2a0d47d008e",
+            "name": "da_DK",
+            "codename": "da_DK",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "00afa946-11d5-ec66-e567-6805355325c3",
+            "name": "es_ES",
+            "codename": "es_ES",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "79a7289a-4d34-4892-9ae1-2f00e6a08dee",
+            "name": "pt_ES",
+            "codename": "pt_ES",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "57fe3967-4a36-4a94-b8c0-0d13f50ff406",
+            "name": "fi_FI",
+            "codename": "fi_FI",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "5a1e82de-71cc-4c79-834c-1f1b37e46ec0",
+            "name": "sv_FI",
+            "codename": "sv_FI",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "3cfe4f76-e12e-47c2-5bef-4393fcf5b707",
+            "name": "fr_FR",
+            "codename": "fr_FR",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "58a41023-8a67-1b67-389e-5e1267b8edf2",
+            "name": "en_GB",
+            "codename": "en_GB",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "df79895d-0e44-4bc7-8577-2cf781c72225",
+            "name": "hr_HR",
+            "codename": "hr_HR",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "d4bd47c4-2f1a-ed6e-a7c6-be375359ed32",
+            "name": "hu_HU",
+            "codename": "hu_HU",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "84934d8b-ba27-4164-b0ee-d36cd6315c6b",
+            "name": "en_IE",
+            "codename": "en_IE",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "1b89d01f-6f3d-4107-8957-bc647de86b45",
+            "name": "de_IT",
+            "codename": "de_IT",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "d197faff-62a3-3baa-57af-afe74c076ae2",
+            "name": "it_IT",
+            "codename": "it_IT",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "7bef45dd-d7ca-39f5-86b8-0fd77fe1ae68",
+            "name": "nl_NL",
+            "codename": "nl_NL",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "aeb92605-5069-48ab-ac80-ff0931b67ff6",
+            "name": "no_NO",
+            "codename": "no_NO",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "15c39815-f530-4ffc-91a5-8bf86b6e2f8d",
+            "name": "en_PL",
+            "codename": "en_PL",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "1efc1c73-52b3-7205-c7b7-1225b7e72d7e",
+            "name": "pl_PL",
+            "codename": "pl_PL",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "d3831f52-0a08-4167-a182-9e8d32ce647c",
+            "name": "ru_PL",
+            "codename": "ru_PL",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "467d5ca6-3d65-46fa-bf64-bc15f188c135",
+            "name": "en_RO",
+            "codename": "en_RO",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "81ad69b1-2c93-667a-3fda-b839656de65b",
+            "name": "ro_RO",
+            "codename": "ro_RO",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "50876309-e0bd-4777-a5b7-d2590c9d994d",
+            "name": "sv_SE",
+            "codename": "sv_SE",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "d2fc4676-bf6e-ffc2-06bf-fcd21b400a5e",
+            "name": "sk_SK",
+            "codename": "sk_SK",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "ffbb622f-e407-4268-884d-d592da5abf39",
+            "name": "sl_SI",
+            "codename": "sl_SI",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "475c68a8-4b61-4fcd-ae0d-2024c3916c52",
+            "name": "uk_UA",
+            "codename": "uk_UA",
+            "is_active": true,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "812992b9-bd7f-3f5f-fe81-0783cdc8caef",
+            "name": "German",
+            "codename": "German",
+            "is_active": false,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "91af38be-2d4a-44cb-72b0-f25577f2c59b",
+            "name": "Dutch",
+            "codename": "Dutch",
+            "is_active": false,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "15686cdb-ea81-68a5-2411-b26a2b51fea9",
+            "name": "French",
+            "codename": "French",
+            "is_active": false,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "53b49795-d93f-7f4b-125a-311c9ae4613c",
+            "name": "Italian",
+            "codename": "Italian",
+            "is_active": false,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "94f3cff3-ab0f-78f9-6abb-a0980cdffba9",
+            "name": "ru_RU",
+            "codename": "ru_RU",
+            "is_active": false,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "fbef5ad6-9335-49cd-8656-c818b8757e09",
+            "name": "en_ES",
+            "codename": "en_ES",
+            "is_active": false,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "94491348-1736-4f3d-8034-393d75da8909",
+            "name": "en_SI",
+            "codename": "en_SI",
+            "is_active": false,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "d66020d8-0d71-49cd-ba55-db87e1bc9b65",
+            "name": "en_HR",
+            "codename": "en_HR",
+            "is_active": false,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "a5d561fa-a1e5-483d-b982-5c1aa3ea3c42",
+            "name": "en_DK",
+            "codename": "en_DK",
+            "is_active": false,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "16e34be7-11d5-4591-814b-2176d1c4158a",
+            "name": "ru_DE",
+            "codename": "ru_DE",
+            "is_active": false,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        },
+        {
+            "id": "83768a46-a753-4908-bfd1-f7c6da554686",
+            "name": "es_DE",
+            "codename": "es_DE",
+            "is_active": false,
+            "is_default": false,
+            "fallback_language": {
+                "id": "00000000-0000-0000-0000-000000000000"
+            }
+        }
+    ],
+    "pagination": {
+        "continuation_token": null,
+        "next_page": null
+    }
+}

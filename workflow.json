@@ -1,0 +1,127 @@
+[
+    {
+        "id": "00000000-0000-0000-0000-000000000000",
+        "name": "Default",
+        "codename": "default",
+        "scopes": [],
+        "steps": [
+            {
+                "id": "0ba5c402-3427-42a2-af97-479a083bb587",
+                "name": "Draft",
+                "codename": "draft",
+                "color": "red",
+                "transitions_to": [
+                    {
+                        "step": {
+                            "id": "a63ac6f8-5e3e-4733-a8d6-69f0ca3fe87d"
+                        }
+                    },
+                    {
+                        "step": {
+                            "id": "c065fbca-499a-4e13-a108-3c941be7737d"
+                        }
+                    },
+                    {
+                        "step": {
+                            "id": "9f61808e-d139-45f7-b517-f0f50efff9c1"
+                        }
+                    },
+                    {
+                        "step": {
+                            "id": "7a535a69-ad34-47f8-806a-def1fdf4d391"
+                        }
+                    }
+                ],
+                "role_ids": []
+            },
+            {
+                "id": "a63ac6f8-5e3e-4733-a8d6-69f0ca3fe87d",
+                "name": "Review",
+                "codename": "review",
+                "color": "yellow",
+                "transitions_to": [
+                    {
+                        "step": {
+                            "id": "0ba5c402-3427-42a2-af97-479a083bb587"
+                        }
+                    },
+                    {
+                        "step": {
+                            "id": "c065fbca-499a-4e13-a108-3c941be7737d"
+                        }
+                    },
+                    {
+                        "step": {
+                            "id": "9f61808e-d139-45f7-b517-f0f50efff9c1"
+                        }
+                    },
+                    {
+                        "step": {
+                            "id": "7a535a69-ad34-47f8-806a-def1fdf4d391"
+                        }
+                    }
+                ],
+                "role_ids": []
+            },
+            {
+                "id": "c065fbca-499a-4e13-a108-3c941be7737d",
+                "name": "Ready to publish",
+                "codename": "ready_to_publish",
+                "color": "light-blue",
+                "transitions_to": [
+                    {
+                        "step": {
+                            "id": "0ba5c402-3427-42a2-af97-479a083bb587"
+                        }
+                    },
+                    {
+                        "step": {
+                            "id": "a63ac6f8-5e3e-4733-a8d6-69f0ca3fe87d"
+                        }
+                    },
+                    {
+                        "step": {
+                            "id": "9f61808e-d139-45f7-b517-f0f50efff9c1"
+                        }
+                    },
+                    {
+                        "step": {
+                            "id": "7a535a69-ad34-47f8-806a-def1fdf4d391"
+                        }
+                    }
+                ],
+                "role_ids": [
+                    "af05b191-2287-437b-abe1-e9888baec699",
+                    "84bb681e-e30e-47f9-88a0-2adfeaa4e6e2"
+                ]
+            }
+        ],
+        "published_step": {
+            "id": "9f61808e-d139-45f7-b517-f0f50efff9c1",
+            "name": "Published",
+            "codename": "published",
+            "unpublish_role_ids": [
+                "84bb681e-e30e-47f9-88a0-2adfeaa4e6e2",
+                "3ed874cf-88f0-417f-9f60-dba3653c82ed",
+                "af05b191-2287-437b-abe1-e9888baec699"
+            ],
+            "create_new_version_role_ids": [
+                "84bb681e-e30e-47f9-88a0-2adfeaa4e6e2",
+                "3ed874cf-88f0-417f-9f60-dba3653c82ed",
+                "6abab001-e585-4c58-a2e5-c757dabb871b",
+                "af05b191-2287-437b-abe1-e9888baec699"
+            ]
+        },
+        "scheduled_step": {
+            "id": "9d2b0228-4d0d-4c23-8b49-01a698857709",
+            "name": "Scheduled",
+            "codename": "scheduled"
+        },
+        "archived_step": {
+            "id": "7a535a69-ad34-47f8-806a-def1fdf4d391",
+            "name": "Archived",
+            "codename": "archived",
+            "role_ids": []
+        }
+    }
+]

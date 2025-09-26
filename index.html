@@ -1,0 +1,737 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Kontent Admin UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { 
+      --kontent-red: #E53935;
+      --kontent-black: #2D2D2D;
+      --kontent-gray: #9E9E9E;
+      --kontent-light-gray: #F5F5F5;
+      --b: #e5e7eb; 
+      --bg: var(--kontent-light-gray); 
+      --muted: var(--kontent-gray);
+    }
+    
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px 24px 120px;
+      background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
+      min-height: 100vh;
+      position: relative;
+    }
+    
+    h1 {
+      color: var(--kontent-black);
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin: 0 0 8px 0;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    h1::after {
+      content: "KontentKanon";
+      display: block;
+      font-size: 1.2rem;
+      color: var(--kontent-red);
+      font-weight: 600;
+      margin-top: 4px;
+    }
+    
+    h2 {
+      color: var(--kontent-black);
+      border-bottom: 3px solid var(--kontent-red);
+      padding-bottom: 8px;
+      margin: 32px 0 20px 0;
+    }
+    
+    .row { margin: 16px 0; }
+    
+    textarea, input, select {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      font-family: inherit;
+      transition: all 0.3s ease;
+      background: white;
+    }
+    
+    /* Workflow Step Button Groups */
+    .workflow-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    
+    .workflow-btn {
+      padding: 8px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 20px;
+      background: white;
+      color: var(--kontent-black);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      user-select: none;
+      min-width: 80px;
+      text-align: center;
+    }
+    
+    .workflow-btn:hover {
+      border-color: var(--kontent-red);
+      transform: translateY(-1px);
+    }
+    
+    .workflow-btn.selected {
+      transform: translateY(-1px);
+    }
+    
+    .workflow-btn.selected.published {
+      background: #4CAF50;
+      color: white;
+      border-color: #4CAF50;
+    }
+    
+    .workflow-btn.selected.archived {
+      background: #FF9800;
+      color: white;
+      border-color: #FF9800;
+    }
+    
+    .workflow-btn.selected.scheduled {
+      background: #2196F3;
+      color: white;
+      border-color: #2196F3;
+    }
+    
+    .workflow-btn.selected:not(.published):not(.archived):not(.scheduled) {
+      background: var(--kontent-red);
+      color: white;
+      border-color: var(--kontent-red);
+    }
+    
+    textarea:focus, input:focus, select:focus {
+      outline: none;
+      border-color: var(--kontent-red);
+      box-shadow: 0 0 0 3px rgba(229, 57, 53, 0.1);
+    }
+    
+    button {
+      width: 100%;
+      padding: 12px 24px;
+      background: var(--kontent-red);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 14px;
+    }
+    
+    button:hover {
+      background: #d32f2f;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(229, 57, 53, 0.3);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .cols3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    
+    pre {
+      background: var(--kontent-black);
+      color: #00ff41;
+      padding: 16px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      overflow: auto;
+      font-family: 'Consolas', 'Monaco', monospace;
+      border-left: 4px solid var(--kontent-red);
+    }
+    
+    .hidden { display: none; }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    th, td {
+      border: 1px solid #e0e0e0;
+      padding: 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    
+    th {
+      background: var(--kontent-red);
+      color: white;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 12px;
+    }
+    
+    tr:nth-child(even) {
+      background: #f9f9f9;
+    }
+    
+    tr:hover {
+      background: rgba(229, 57, 53, 0.05);
+    }
+    
+    .pill {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: var(--kontent-red);
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+      margin: 2px 4px 2px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    
+    .actions {
+      position: sticky;
+      bottom: 0;
+      background: white;
+      padding: 20px;
+      border-top: 3px solid var(--kontent-red);
+      box-shadow: 0 -4px 6px rgba(0,0,0,0.1);
+      border-radius: 12px 12px 0 0;
+    }
+    
+    small.muted { 
+      color: var(--muted); 
+      font-style: italic;
+    }
+    
+    .bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+      position: relative;
+    }
+    
+    .loading::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      margin: -12px 0 0 -12px;
+      width: 24px;
+      height: 24px;
+      border: 2px solid transparent;
+      border-top: 2px solid var(--kontent-red);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .error {
+      color: #d32f2f;
+      background: #ffebee;
+      padding: 12px;
+      border-radius: 6px;
+      margin: 12px 0;
+      border-left: 4px solid #d32f2f;
+      font-weight: 500;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--kontent-black);
+      font-weight: 600;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    
+    hr {
+      border: none;
+      height: 3px;
+      background: linear-gradient(90deg, var(--kontent-red) 0%, var(--kontent-gray) 100%);
+      margin: 32px 0;
+      border-radius: 2px;
+    }
+    
+    /* Cannon logo in bottom left */
+    .cannon-logo {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      width: 200px;
+      height: 200px;
+      opacity: 0.8;
+      z-index: 1000;
+      transition: opacity 0.3s ease;
+    }
+    .cannon-logo:hover {
+      opacity: 1;
+    }
+    .cannon-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      filter: drop-shadow(0 0 18px rgba(229,57,53,0.5))
+              drop-shadow(0 0 36px rgba(229,57,53,0.35));
+      transition: filter .3s ease, opacity .3s ease;
+    }
+    .cannon-logo:hover img {
+      filter: drop-shadow(0 0 22px rgba(229,57,53,0.7))
+              drop-shadow(0 0 44px rgba(229,57,53,0.5));
+    }
+    
+    /* Responsive design */
+    @media (max-width: 768px) {
+      body { padding: 16px 16px 100px; }
+      .cols, .cols3 { grid-template-columns: 1fr; }
+      h1 { font-size: 2rem; }
+      .cannon-logo { width: 60px; height: 60px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Cannon logo in bottom left -->
+  <div class="cannon-logo">
+    <!-- Replace the src path with your actual asset location -->
+    <img src="assets/kontentkanon.png" alt="KontentKanon" />
+  </div>
+
+  <h1>Kontent actions</h1>
+
+  <!-- Bulk actions -->
+  <div class="row">
+    <label>Item IDs (comma or newline)</label>
+    <textarea id="ids" rows="5" placeholder="Paste item IDs to act on directly"></textarea>
+  </div>
+
+  <div class="row cols">
+    <div>
+      <label>Action</label>
+      <select id="action">
+        <option value="workflow">Change workflow / Publish / Unpublish</option>
+        <option value="delete-item">Delete entire item(s)</option>
+        <option value="delete-variant">Delete language variant(s)</option>
+      </select>
+    </div>
+    <div id="workflowStepWrap">
+      <label>Workflow step</label>
+      <div class="workflow-buttons" id="workflowButtons">
+        <!-- Populated by JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <div class="row" id="languageWrap">
+    <label>Target languages (multi-select)</label>
+    <select id="languages" multiple size="10"></select>
+  </div>
+
+  <div class="row cols">
+    <div><label><input type="checkbox" id="dry"> Dry run</label></div>
+    <div><button id="run">Run on pasted IDs</button></div>
+  </div>
+
+  <hr/>
+
+  <!-- Browse all connected items from roots -->
+  <h2>Browse items by layer / type</h2>
+  <div class="row">
+    <label>Root item IDs (comma or newline)</label>
+    <textarea id="rootIds" rows="5" placeholder="Start node(s), e.g. page or nav root item IDs"></textarea>
+  </div>
+
+  <div class="row cols3">
+    <div>
+      <label>Language codename</label>
+      <select id="browseLang"></select>
+    </div>
+    <div>
+      <label>Layer element codename</label>
+      <input id="layerEl" value="layer" placeholder="Element codename for layer detection" />
+    </div>
+    <div>
+      <label>Layer filter (comma list, optional)</label>
+      <input id="layerFilter" placeholder="e.g. nav, cta" />
+    </div>
+  </div>
+
+  <div class="row cols">
+    <div>
+      <label>Type filter (comma list, optional)</label>
+      <input id="typeFilter" placeholder="e.g. article, page, hero_block" />
+    </div>
+    <div>
+      <label>Safety cap (max items followed)</label>
+      <input id="maxNodes" type="number" value="2000" min="50" max="10000" />
+    </div>
+  </div>
+
+  <div class="row">
+    <button id="browse">Fetch items</button>
+  </div>
+
+  <div class="row bar">
+    <div><small class="muted" id="countLabel"></small></div>
+    <div><small class="muted">Auto-detects linked elements (linked items and rich text, including components) and follows all connections until the cap.</small></div>
+  </div>
+
+  <div id="errorContainer"></div>
+
+  <div class="row">
+    <table id="resultsTable" class="hidden">
+      <thead>
+        <tr>
+          <th style="width:36px"><input type="checkbox" id="checkAll"/></th>
+          <th>Name</th>
+          <th>Item ID</th>
+          <th>Type</th>
+          <th>Layer</th>
+          <th>Linked count</th>
+        </tr>
+      </thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+  </div>
+
+  <div class="actions hidden" id="tableActions">
+    <div class="cols3">
+      <div>
+        <label>Action for selected</label>
+        <select id="selAction">
+          <option value="workflow">Change workflow / Publish / Unpublish</option>
+          <option value="delete-item">Delete entire item(s)</option>
+          <option value="delete-variant">Delete language variant(s)</option>
+        </select>
+      </div>
+      <div id="selWorkflowWrap">
+        <label>Workflow step</label>
+        <div class="workflow-buttons" id="selWorkflowButtons">
+          <!-- Populated by JavaScript -->
+        </div>
+      </div>
+      <div>
+        <button id="applySelected">Apply to selected</button>
+      </div>
+    </div>
+  </div>
+
+  <pre id="out"></pre>
+
+  <script>
+    let selectedWorkflowStep = null;
+    let selectedWorkflowStepSel = null;
+
+    const out = document.getElementById("out");
+    const errorContainer = document.getElementById("errorContainer");
+    
+    function log(x){ out.textContent = JSON.stringify(x,null,2); }
+    
+    function showError(message) {
+      errorContainer.innerHTML = '<div class="error">' + escapeHtml(message) + '</div>';
+      setTimeout(() => errorContainer.innerHTML = '', 10000);
+    }
+    
+    function createWorkflowButton(step, containerId, selectedVar) {
+      const button = document.createElement('div');
+      button.className = 'workflow-btn';
+      button.textContent = step.name;
+      button.dataset.stepId = step.id;
+      
+      // Add special styling for different step types
+      if (step.published) button.classList.add('published');
+      else if (step.archived) button.classList.add('archived');
+      else if (step.scheduled) button.classList.add('scheduled');
+      
+      button.onclick = () => {
+        // Remove selected class from all buttons in this group
+        const container = document.getElementById(containerId);
+        container.querySelectorAll('.workflow-btn').forEach(btn => btn.classList.remove('selected'));
+        
+        // Add selected class to clicked button
+        button.classList.add('selected');
+        
+        // Update the selected value
+        if (containerId === 'workflowButtons') {
+          selectedWorkflowStep = step.id;
+        } else {
+          selectedWorkflowStepSel = step.id;
+        }
+      };
+      
+      return button;
+    }
+
+    const wfStepWrapTop = document.getElementById("workflowStepWrap");
+    const wfStepWrapSel = document.getElementById("selWorkflowWrap");
+
+    async function loadMeta(){
+      try {
+        const [langs, steps] = await Promise.all([
+          fetch("/api/meta/languages").then(r=>r.json()).catch(()=>({languages:[]})),
+          fetch("/api/meta/workflow-steps").then(r=>r.json()).catch(()=>({steps:[]}))
+        ]);
+
+        const langMulti = document.getElementById("languages");
+        const browseLang = document.getElementById("browseLang");
+        if ((langs.languages||[]).length === 0) {
+          langMulti.add(new Option("No languages found", "", true, true));
+          langMulti.disabled = true;
+          browseLang.add(new Option("No languages found", "", true, true));
+          browseLang.disabled = true;
+          showError("No languages found. Check your API configuration.");
+        } else {
+          (langs.languages||[]).forEach(l=>{
+            langMulti.add(new Option(l.name,l.codename));
+            browseLang.add(new Option(l.name,l.codename));
+          });
+        }
+
+        const wfButtonsTop = document.getElementById("workflowButtons");
+        const wfButtonsSel = document.getElementById("selWorkflowButtons");
+        
+        if ((steps.steps||[]).length === 0) {
+          wfButtonsTop.innerHTML = '<div class="error">No workflow steps found. Check your API configuration.</div>';
+          wfButtonsSel.innerHTML = '<div class="error">No workflow steps found. Check your API configuration.</div>';
+          showError("No workflow steps found. Check your API configuration.");
+        } else {
+          // Clear containers
+          wfButtonsTop.innerHTML = '';
+          wfButtonsSel.innerHTML = '';
+          
+          // Add buttons for each workflow step
+          (steps.steps||[]).forEach(s=>{
+            wfButtonsTop.appendChild(createWorkflowButton(s, 'workflowButtons', 'selectedWorkflowStep'));
+            wfButtonsSel.appendChild(createWorkflowButton(s, 'selWorkflowButtons', 'selectedWorkflowStepSel'));
+          });
+        }
+
+        // Default visibility since "workflow" is the default selected action
+        wfStepWrapTop.style.display = "block";
+        wfStepWrapSel.style.display = "block";
+      } catch (error) {
+        showError("Failed to load metadata: " + error.message);
+      }
+    }
+    loadMeta();
+
+    function toggleStepWraps(selectId, wrapEl){
+      wrapEl.style.display = document.getElementById(selectId).value==="workflow" ? "block" : "none";
+    }
+    document.getElementById("action").addEventListener("change",()=>toggleStepWraps("action", wfStepWrapTop));
+    document.getElementById("selAction").addEventListener("change",()=>toggleStepWraps("selAction", wfStepWrapSel));
+
+    // Bulk run on pasted IDs
+    document.getElementById("run").onclick = async()=>{
+      const button = document.getElementById("run");
+      const ids = document.getElementById("ids").value;
+      const action = document.getElementById("action").value;
+      const langs = Array.from(document.getElementById("languages").selectedOptions).map(o=>o.value);
+      const dry = document.getElementById("dry").checked;
+      
+      if(!ids.trim()){ 
+        showError("Please paste at least one item ID");
+        return; 
+      }
+
+      try {
+        button.classList.add("loading");
+        button.textContent = "Processing...";
+
+        if(action==="workflow"){
+          if (!selectedWorkflowStep) {
+            showError("Please select a workflow step");
+            return;
+          }
+          const r = await fetch("/api/workflow",{method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({itemIds:ids,languageCodenames:langs,workflowStepId:selectedWorkflowStep,dryRun:dry})});
+          
+          if (!r.ok) {
+            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+          }
+          log(await r.json());
+        } else {
+          const mode = action==="delete-item"?"item":"variant";
+          const r = await fetch("/api/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({itemIds:ids,deleteMode:mode,languageCodenames:langs,dryRun:dry})});
+          
+          if (!r.ok) {
+            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+          }
+          log(await r.json());
+        }
+      } catch (error) {
+        showError("Operation failed: " + error.message);
+        log({ error: error.message });
+      } finally {
+        button.classList.remove("loading");
+        button.textContent = "Run on pasted IDs";
+      }
+    };
+
+    // Browse graph
+    document.getElementById("browse").onclick = async()=>{
+      const button = document.getElementById("browse");
+      const rootIds = document.getElementById("rootIds").value.split(/[\s,]+/).filter(Boolean);
+      
+      if(!rootIds.length){ 
+        showError("Add at least one root item ID");
+        return; 
+      }
+      
+      const lang = document.getElementById("browseLang").value;
+      if(!lang){ 
+        showError("Please select a language");
+        return; 
+      }
+      
+      const layerEl = document.getElementById("layerEl").value.trim() || "layer";
+      const layerFilter = document.getElementById("layerFilter").value.split(/[\s,]+/).filter(Boolean);
+      const typeFilter = document.getElementById("typeFilter").value.split(/[\s,]+/).filter(Boolean);
+      const maxNodes = +document.getElementById("maxNodes").value || 2000;
+
+      try {
+        button.classList.add("loading");
+        button.textContent = "Fetching...";
+
+        const r = await fetch("/api/graph/query",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({rootItemIds:rootIds,languageCodename:lang,layerElementCodename:layerEl,layerFilterIn:layerFilter,typeFilterIn:typeFilter,maxNodes})});
+        
+        if (!r.ok) {
+          throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+        }
+        
+        const data = await r.json();
+        
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        
+        log(data);
+
+        const tbl = document.getElementById("resultsTable");
+        const body = document.getElementById("resultsBody");
+        body.innerHTML="";
+        
+        (data.items||[]).forEach(it=>{
+          const layerHtml = (it.layerValues||[])
+            .map(v => '<span class="pill">' + escapeHtml(String(v)) + '</span>')
+            .join('');
+          const tr = document.createElement("tr");
+          tr.innerHTML =
+            '<td><input type="checkbox" class="rowChk" value="'+it.id+'"></td>'+
+            '<td>'+escapeHtml(it.name||"(unnamed)")+'</td>'+
+            '<td><small>'+it.id+'</small></td>'+
+            '<td>'+escapeHtml(it.typeCodename||"")+'</td>'+
+            '<td>'+layerHtml+'</td>'+
+            '<td>'+(it.linkedCount||0)+'</td>';
+          body.appendChild(tr);
+        });
+        
+        tbl.classList.remove("hidden");
+        document.getElementById("tableActions").classList.remove("hidden");
+        document.getElementById("countLabel").textContent = 'Found ' + (data.count||0) + ' item(s)';
+        document.getElementById("checkAll").checked = false;
+      } catch (error) {
+        showError("Graph query failed: " + error.message);
+        log({ error: error.message });
+      } finally {
+        button.classList.remove("loading");
+        button.textContent = "Fetch items";
+      }
+    };
+
+    // Select all
+    document.getElementById("checkAll").onclick = e=>{
+      document.querySelectorAll(".rowChk").forEach(ch=>ch.checked=e.target.checked);
+    };
+
+    // Apply to selected
+    document.getElementById("applySelected").onclick = async()=>{
+      const button = document.getElementById("applySelected");
+      const ids = Array.from(document.querySelectorAll(".rowChk:checked")).map(c=>c.value);
+      
+      if(!ids.length){
+        showError("No rows selected");
+        return;
+      }
+      
+      const action = document.getElementById("selAction").value;
+      const lang = document.getElementById("browseLang").value;
+
+      try {
+        button.classList.add("loading");
+        button.textContent = "Processing...";
+
+        if(action==="workflow"){
+          if (!selectedWorkflowStepSel) {
+            showError("Please select a workflow step");
+            return;
+          }
+          const r = await fetch("/api/workflow",{method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({itemIds:ids.join(","),languageCodenames:[lang],workflowStepId:selectedWorkflowStepSel})});
+          
+          if (!r.ok) {
+            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+          }
+          log(await r.json());
+        } else {
+          const mode = action==="delete-item"?"item":"variant";
+          const r = await fetch("/api/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({itemIds:ids.join(","),deleteMode:mode,languageCodenames:[lang]})});
+          
+          if (!r.ok) {
+            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+          }
+          log(await r.json());
+        }
+      } catch (error) {
+        showError("Bulk operation failed: " + error.message);
+        log({ error: error.message });
+      } finally {
+        button.classList.remove("loading");
+        button.textContent = "Apply to selected";
+      }
+    };
+
+    function escapeHtml(s){
+      return String(s)
+        .replaceAll("&","&amp;").replaceAll("<","&lt;")
+        .replaceAll(">","&gt;").replaceAll('"',"&quot;")
+        .replaceAll("'","&#39;");
+    }
+  </script>
+</body>
+</html>

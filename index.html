@@ -508,9 +508,18 @@
     async function loadMeta(){
       try {
         const [langs, steps] = await Promise.all([
-          fetch("/api/meta/languages").then(r=>r.json()).catch(()=>({languages:[]})),
-          fetch("/api/meta/workflow-steps").then(r=>r.json()).catch(()=>({steps:[]}))
-        ]);
+          fetch("/api/meta/languages").then(async r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+            return r.json();
+          }),
+          fetch("/api/meta/workflow-steps").then(async r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+            return r.json();
+          })
+        ]).catch(err => {
+          showError("Metadata loading failed: " + err.message);
+          return [ { languages: [] }, { steps: [] } ];
+        });
 
         const langMulti = document.getElementById("languages");
         const browseLang = document.getElementById("browseLang");

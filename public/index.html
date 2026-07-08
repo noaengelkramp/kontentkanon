@@ -61,7 +61,6 @@
       background: white;
     }
     
-    /* Workflow Step Button Groups */
     .workflow-buttons {
       display: flex;
       flex-wrap: wrap;
@@ -111,7 +110,19 @@
       border-color: #2196F3;
     }
     
-    .workflow-btn.selected:not(.published):not(.archived):not(.scheduled) {
+    .workflow-btn.selected.review {
+      background: #87CEEB;
+      color: white;
+      border-color: #87CEEB;
+    }
+    
+    .workflow-btn.selected.ready-to-publish {
+      background: #4B0082;
+      color: white;
+      border-color: #4B0082;
+    }
+    
+    .workflow-btn.selected:not(.published):not(.archived):not(.scheduled):not(.review):not(.ready-to-publish) {
       background: var(--kontent-red);
       color: white;
       border-color: var(--kontent-red);
@@ -146,6 +157,15 @@
     
     button:active {
       transform: translateY(0);
+    }
+    
+    button.success {
+      background: #4CAF50;
+    }
+    
+    button.success:hover {
+      background: #45a049;
+      box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
     }
     
     .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -267,6 +287,27 @@
       font-weight: 500;
     }
     
+    .progress-bar {
+      background: #e0e0e0;
+      border-radius: 10px;
+      height: 24px;
+      overflow: hidden;
+      margin: 12px 0;
+      position: relative;
+    }
+    
+    .progress-fill {
+      background: linear-gradient(90deg, var(--kontent-red) 0%, #ff6f6f 100%);
+      height: 100%;
+      transition: width 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 12px;
+    }
+    
     label {
       display: block;
       margin-bottom: 6px;
@@ -285,13 +326,12 @@
       border-radius: 2px;
     }
     
-    /* Cannon logo in bottom left */
     .cannon-logo {
       position: fixed;
       bottom: 20px;
       left: 20px;
-      width: 200px;
-      height: 200px;
+      width: 150px;
+      height: 150px;
       opacity: 0.8;
       z-index: 1000;
       transition: opacity 0.3s ease;
@@ -313,25 +353,21 @@
               drop-shadow(0 0 44px rgba(229,57,53,0.5));
     }
     
-    /* Responsive design */
     @media (max-width: 768px) {
       body { padding: 16px 16px 100px; }
       .cols, .cols3 { grid-template-columns: 1fr; }
       h1 { font-size: 2rem; }
-      .cannon-logo { width: 60px; height: 60px; }
+      .cannon-logo { width: 45px; height: 45px; }
     }
   </style>
 </head>
 <body>
-  <!-- Cannon logo in bottom left -->
   <div class="cannon-logo">
-    <!-- Replace the src path with your actual asset location -->
     <img src="kontentkanon.png" alt="KontentKanon" />
   </div>
 
   <h1>Kontent actions</h1>
 
-  <!-- Bulk actions -->
   <div class="row">
     <label>Item IDs (comma or newline)</label>
     <textarea id="ids" rows="5" placeholder="Paste item IDs to act on directly"></textarea>
@@ -344,37 +380,17 @@
         <option value="workflow">Change workflow / Publish / Unpublish</option>
         <option value="delete-item">Delete entire item(s)</option>
         <option value="delete-variant">Delete language variant(s)</option>
-        <option value="duplicate">Deep duplicate item(s)</option>
       </select>
     </div>
     <div id="workflowStepWrap">
       <label>Workflow step</label>
-      <div class="workflow-buttons" id="workflowButtons">
-        <!-- Populated by JavaScript -->
-      </div>
+      <div class="workflow-buttons" id="workflowButtons"></div>
     </div>
   </div>
 
-  <!-- Duplication Configuration Section -->
-  <div id="duplicationWrap" style="display: none; background: #fff; padding: 16px; border-radius: 8px; border: 1px solid var(--b); margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-    <div class="cols3">
-      <div>
-        <label>Source Language</label>
-        <select id="sourceLanguage"></select>
-      </div>
-      <div>
-        <label>Name prefix</label>
-        <input id="dupPrefix" value="Copy of " placeholder="e.g. Copy of " style="padding: 10px;" />
-      </div>
-      <div>
-        <label>Name suffix</label>
-        <input id="dupSuffix" placeholder="e.g. - Copy" style="padding: 10px;" />
-      </div>
-    </div>
-    <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
-      <input type="checkbox" id="dupLinked" checked style="width: auto; cursor: pointer;">
-      <label for="dupLinked" style="display: inline; margin-bottom: 0; cursor: pointer; text-transform: none; font-size: 14px; font-weight: 500;">Duplicate linked items recursively</label>
-    </div>
+  <div class="row hidden" id="scheduleWrap">
+    <label>Schedule publish date & time</label>
+    <input type="datetime-local" id="scheduleTime" />
   </div>
 
   <div class="row" id="languageWrap">
@@ -382,45 +398,27 @@
     <select id="languages" multiple size="10"></select>
   </div>
 
-  <div class="row cols">
-    <div><label><input type="checkbox" id="dry"> Dry run</label></div>
-    <div><button id="run">Run on pasted IDs</button></div>
+  <div class="row">
+    <button id="run">Run on pasted IDs</button>
   </div>
 
   <hr/>
 
-  <!-- Browse all connected items from roots -->
   <h2>Browse items by layer / type</h2>
   <div class="row">
     <label>Root item IDs (comma or newline)</label>
     <textarea id="rootIds" rows="5" placeholder="Start node(s), e.g. page or nav root item IDs"></textarea>
   </div>
 
-  <div class="row cols3">
-    <div>
-      <label>Language codename</label>
-      <select id="browseLang"></select>
-    </div>
-    <div>
-      <label>Layer element codename</label>
-      <input id="layerEl" value="layer" placeholder="Element codename for layer detection" />
-    </div>
-    <div>
-      <label>Layer filter (comma list, optional)</label>
-      <input id="layerFilter" placeholder="e.g. nav, cta" />
-    </div>
+  <div class="row">
+    <label>Language codename (for browsing)</label>
+    <select id="browseLang"></select>
   </div>
 
-  <div class="row cols">
-    <div>
-      <label>Type filter (comma list, optional)</label>
-      <input id="typeFilter" placeholder="e.g. article, page, hero_block" />
-    </div>
-    <div>
-      <label>Safety cap (max items followed)</label>
-      <input id="maxNodes" type="number" value="2000" min="50" max="10000" />
-    </div>
-  </div>
+  <input id="layerEl" type="hidden" value="layer" />
+  <input id="layerFilter" type="hidden" value="" />
+  <input id="typeFilter" type="hidden" value="" />
+  <input id="maxNodes" type="hidden" value="2000" />
 
   <div class="row">
     <button id="browse">Fetch items</button>
@@ -428,7 +426,14 @@
 
   <div class="row bar">
     <div><small class="muted" id="countLabel"></small></div>
-    <div><small class="muted">Auto-detects linked elements (linked items and rich text, including components) and follows all connections until the cap.</small></div>
+    <div><small class="muted">Auto-detects linked elements and follows all connections.</small></div>
+  </div>
+  
+  <div id="browseProgress" class="hidden">
+    <div class="progress-bar">
+      <div class="progress-fill" id="browseProgressFill" style="width: 0%">0%</div>
+    </div>
+    <small class="muted" id="browseProgressText"></small>
   </div>
 
   <div id="errorContainer"></div>
@@ -449,44 +454,92 @@
     </table>
   </div>
 
-  <div class="actions hidden" id="tableActions" style="border-radius: 12px; margin-top: 16px;">
-    <div class="cols3" style="align-items: end;">
+  <div class="actions hidden" id="tableActions">
+    <div class="cols3">
       <div>
         <label>Action for selected</label>
         <select id="selAction">
           <option value="workflow">Change workflow / Publish / Unpublish</option>
           <option value="delete-item">Delete entire item(s)</option>
           <option value="delete-variant">Delete language variant(s)</option>
-          <option value="duplicate">Deep duplicate item(s)</option>
         </select>
       </div>
       <div id="selWorkflowWrap">
         <label>Workflow step</label>
-        <div class="workflow-buttons" id="selWorkflowButtons">
-          <!-- Populated by JavaScript -->
-        </div>
+        <div class="workflow-buttons" id="selWorkflowButtons"></div>
       </div>
-      <div id="selDuplicationWrap" style="display: none; background: var(--kontent-light-gray); padding: 12px; border-radius: 6px; border: 1px solid var(--b); margin-bottom: 2px;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <div>
-            <label style="font-size: 11px;">Src Lang</label>
-            <select id="selSourceLang" style="padding: 6px; font-size: 12px;"></select>
-          </div>
-          <div>
-            <label style="font-size: 11px;">Prefix</label>
-            <input id="selDupPrefix" value="Copy of " style="padding: 6px; font-size: 12px;" />
-          </div>
-        </div>
-        <div style="margin-top: 8px; display: flex; align-items: center; gap: 6px;">
-          <input type="checkbox" id="selDupLinked" checked style="width: auto; cursor: pointer; transform: scale(0.9);">
-          <label for="selDupLinked" style="display: inline; margin-bottom: 0; cursor: pointer; text-transform: none; font-size: 11px; font-weight: 500;">Duplicate links</label>
-        </div>
-      </div>
-      <div>
-        <button id="applySelected" style="padding: 12px;">Apply to selected</button>
+      <div id="selLanguageWrap">
+        <label>Target languages (multi-select)</label>
+        <select id="selLanguages" multiple size="5"></select>
       </div>
     </div>
+    <div class="row hidden" id="selScheduleWrap" style="margin-top: 16px;">
+      <label>Schedule publish date & time</label>
+      <input type="datetime-local" id="selScheduleTime" />
+    </div>
+    <div class="row" style="margin-top: 16px;">
+      <button id="applySelected">Apply to selected</button>
+    </div>
   </div>
+
+  <hr/>
+
+  <h2>Duplicate item structure</h2>
+  <small class="muted">Recursively duplicate an item and all its linked content, maintaining relationships</small>
+
+  <div class="row">
+    <label>Source item ID</label>
+    <input type="text" id="dupSourceId" placeholder="Item ID to duplicate" />
+  </div>
+
+  <div class="row cols">
+    <div>
+      <label>Source language</label>
+      <select id="dupSourceLang"></select>
+    </div>
+    <div>
+      <label>Target languages (multi-select)</label>
+      <select id="dupTargetLangs" multiple size="5"></select>
+    </div>
+  </div>
+
+  <div class="row cols3">
+    <div>
+      <label>Name prefix</label>
+      <input type="text" id="dupPrefix" value="" placeholder="e.g., 'Copy of '" />
+    </div>
+    <div>
+      <label>Name suffix</label>
+      <input type="text" id="dupSuffix" value="" placeholder="e.g., ' (Draft)'" />
+    </div>
+    <div>
+      <label>Max depth</label>
+      <input type="number" id="dupMaxDepth" value="10" min="1" max="50" />
+    </div>
+  </div>
+
+  <div class="row cols">
+    <div>
+      <label>
+        <input type="checkbox" id="dupDeep" checked /> Duplicate linked items (deep copy)
+      </label>
+    </div>
+    <div>
+      <label>Collection ID (optional)</label>
+      <input type="text" id="dupCollectionId" placeholder="Leave empty to use source collection" />
+    </div>
+  </div>
+
+  <div class="row cols">
+    <button id="dupPreview">Preview duplication</button>
+    <button id="dupExecute" class="success">Execute duplication</button>
+  </div>
+  
+  <small class="muted" style="display: block; margin-top: 8px;">
+    💡 <strong>Tip:</strong> Run preview first. You can edit the names of the new items in the preview table.
+  </small>
+
+  <div id="dupResults"></div>
 
   <pre id="out"></pre>
 
@@ -517,25 +570,25 @@
       button.className = 'workflow-btn';
       button.textContent = step.name;
       button.dataset.stepId = step.id;
+      button.dataset.scheduled = step.scheduled ? 'true' : 'false';
       
-      // Add special styling for different step types
       if (step.published) button.classList.add('published');
       else if (step.archived) button.classList.add('archived');
       else if (step.scheduled) button.classList.add('scheduled');
+      else if (step.codename === 'review') button.classList.add('review');
+      else if (step.codename === 'ready_to_publish') button.classList.add('ready-to-publish');
       
       button.onclick = () => {
-        // Remove selected class from all buttons in this group
         const container = document.getElementById(containerId);
         container.querySelectorAll('.workflow-btn').forEach(btn => btn.classList.remove('selected'));
-        
-        // Add selected class to clicked button
         button.classList.add('selected');
         
-        // Update the selected value
         if (containerId === 'workflowButtons') {
           selectedWorkflowStep = step.id;
+          scheduleWrap.classList.toggle('hidden', !step.scheduled);
         } else {
           selectedWorkflowStepSel = step.id;
+          selScheduleWrap.classList.toggle('hidden', !step.scheduled);
         }
       };
       
@@ -544,234 +597,270 @@
 
     const wfStepWrapTop = document.getElementById("workflowStepWrap");
     const wfStepWrapSel = document.getElementById("selWorkflowWrap");
+    const selLanguageWrap = document.getElementById("selLanguageWrap");
+    const scheduleWrap = document.getElementById("scheduleWrap");
+    const selScheduleWrap = document.getElementById("selScheduleWrap");
 
     async function loadMeta(){
       try {
         const [langs, steps] = await Promise.all([
-          fetch("/api/meta/languages").then(async r => {
-            if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-            return r.json();
-          }),
-          fetch("/api/meta/workflow-steps").then(async r => {
-            if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-            return r.json();
-          })
-        ]).catch(err => {
-          showError("Metadata loading failed: " + err.message);
-          return [ { languages: [] }, { steps: [] } ];
-        });
+          fetch("/api/meta/languages").then(r=>r.json()).catch(()=>({languages:[]})),
+          fetch("/api/meta/workflow-steps").then(r=>r.json()).catch(()=>({steps:[]}))
+        ]);
 
-        const langMulti = document.getElementById("languages");
-        const browseLang = document.getElementById("browseLang");
+        const langElements = [
+            document.getElementById("languages"),
+            document.getElementById("browseLang"),
+            document.getElementById("selLanguages"),
+            document.getElementById("dupSourceLang"),
+            document.getElementById("dupTargetLangs")
+        ];
+        
         if ((langs.languages||[]).length === 0) {
-          langMulti.add(new Option("No languages found", "", true, true));
-          langMulti.disabled = true;
-          browseLang.add(new Option("No languages found", "", true, true));
-          browseLang.disabled = true;
-          showError("No languages found. Check your API configuration.");
+            langElements.forEach(el => {
+                if (el) {
+                    el.add(new Option("No languages found", "", true, true));
+                    el.disabled = true;
+                }
+            });
+            showError("No languages found. Check your API configuration.");
         } else {
-          const sourceLang = document.getElementById("sourceLanguage");
-          const selSourceLang = document.getElementById("selSourceLang");
-          (langs.languages||[]).forEach(l=>{
-            langMulti.add(new Option(l.name,l.codename));
-            browseLang.add(new Option(l.name,l.codename));
-            sourceLang.add(new Option(l.name,l.codename));
-            selSourceLang.add(new Option(l.name,l.codename));
-          });
+            langElements.forEach(el => {
+                if (el) {
+                    el.innerHTML = '';
+                    (langs.languages||[]).forEach(l=>{
+                        el.add(new Option(l.name,l.codename));
+                    });
+                }
+            });
+            
+            // Auto-select matching target language when source language changes
+            document.getElementById("dupSourceLang").addEventListener("change", (e) => {
+              const sourceLang = e.target.value;
+              const targetLangsSelect = document.getElementById("dupTargetLangs");
+              
+              // Deselect all first
+              Array.from(targetLangsSelect.options).forEach(opt => opt.selected = false);
+              
+              // Select the matching language in target
+              Array.from(targetLangsSelect.options).forEach(opt => {
+                if (opt.value === sourceLang) {
+                  opt.selected = true;
+                }
+              });
+            });
         }
 
         const wfButtonsTop = document.getElementById("workflowButtons");
         const wfButtonsSel = document.getElementById("selWorkflowButtons");
         
         if ((steps.steps||[]).length === 0) {
-          wfButtonsTop.innerHTML = '<div class="error">No workflow steps found. Check your API configuration.</div>';
-          wfButtonsSel.innerHTML = '<div class="error">No workflow steps found. Check your API configuration.</div>';
+          wfButtonsTop.innerHTML = '<div class="error">No workflow steps found.</div>';
+          wfButtonsSel.innerHTML = '<div class="error">No workflow steps found.</div>';
           showError("No workflow steps found. Check your API configuration.");
         } else {
-          // Clear containers
           wfButtonsTop.innerHTML = '';
           wfButtonsSel.innerHTML = '';
           
-          // Add buttons for each workflow step
           (steps.steps||[]).forEach(s=>{
             wfButtonsTop.appendChild(createWorkflowButton(s, 'workflowButtons', 'selectedWorkflowStep'));
             wfButtonsSel.appendChild(createWorkflowButton(s, 'selWorkflowButtons', 'selectedWorkflowStepSel'));
           });
         }
 
-        // Default visibility since "workflow" is the default selected action
         wfStepWrapTop.style.display = "block";
         wfStepWrapSel.style.display = "block";
+        selLanguageWrap.style.display = "block";
+
       } catch (error) {
         showError("Failed to load metadata: " + error.message);
       }
     }
     loadMeta();
 
-    function toggleActionPanels(selectId) {
-      const val = document.getElementById(selectId).value;
-      const isTop = selectId === "action";
-      if (isTop) {
-        wfStepWrapTop.style.display = val === "workflow" ? "block" : "none";
-        document.getElementById("duplicationWrap").style.display = val === "duplicate" ? "block" : "none";
-        document.getElementById("languageWrap").style.display = val === "duplicate" ? "none" : "block";
-      } else {
-        document.getElementById("selWorkflowWrap").style.display = val === "workflow" ? "block" : "none";
-        document.getElementById("selDuplicationWrap").style.display = val === "duplicate" ? "block" : "none";
-      }
+    function toggleStepWraps(selectId, wrapEl){
+      const isWorkflow = document.getElementById(selectId).value==="workflow";
+      wrapEl.style.display = isWorkflow ? "block" : "none";
     }
-    document.getElementById("action").addEventListener("change", () => toggleActionPanels("action"));
-    document.getElementById("selAction").addEventListener("change", () => toggleActionPanels("selAction"));
+    
+    document.getElementById("action").addEventListener("change",()=>toggleStepWraps("action", wfStepWrapTop));
+    document.getElementById("selAction").addEventListener("change",()=>toggleStepWraps("selAction", wfStepWrapSel, selLanguageWrap));
 
-    // Bulk run on pasted IDs
     document.getElementById("run").onclick = async()=>{
       const button = document.getElementById("run");
       const ids = document.getElementById("ids").value;
       const action = document.getElementById("action").value;
       const langs = Array.from(document.getElementById("languages").selectedOptions).map(o=>o.value);
-      const dry = document.getElementById("dry").checked;
       
-      const parsedIds = Array.from(new Set(String(ids || "").split(/[,\s]+/).map(x => x.trim()).filter(Boolean)));
-      if(!parsedIds.length){ 
-        showError("Please paste at least one item ID");
-        return; 
-      }
+      if(!ids.trim()){ showError("Please paste at least one item ID"); return; }
+      if (action === "workflow" && !langs.length) { showError("Please select at least one language"); return; }
 
       try {
         button.classList.add("loading");
-        
-        if(action==="workflow" && !selectedWorkflowStep){
-          showError("Please select a workflow step");
-          button.classList.remove("loading");
-          return;
-        }
+        button.textContent = "Processing...";
 
-        // Handle duplication separately — no chunking, single call per item
-        if (action === "duplicate") {
-          const sourceLanguage = document.getElementById("sourceLanguage").value;
-          const namePrefix = document.getElementById("dupPrefix").value;
-          const nameSuffix = document.getElementById("dupSuffix").value;
-          const duplicateLinkedItems = document.getElementById("dupLinked").checked;
-          const targetLanguages = langs.length ? langs : [sourceLanguage];
-
-          button.textContent = `Duplicating ${parsedIds.length} item(s)...`;
-          const r = await fetch("/api/duplicate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sourceItemIds: parsedIds,
-              sourceLanguage,
-              targetLanguages,
-              namePrefix,
-              nameSuffix,
-              duplicateLinkedItems,
-              dryRun: dry
-            })
-          });
-          if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-          log(await r.json());
-          return;
-        }
-
-        const idChunks = chunkArray(parsedIds, 5);
-        const mergedResults = [];
-        let finalAction = action;
-        let finalMode = null;
-
-        for (let i = 0; i < idChunks.length; i++) {
-          const chunk = idChunks[i];
-          button.textContent = `Processing chunk ${i + 1}/${idChunks.length}...`;
+        if(action==="workflow"){
+          if (!selectedWorkflowStep) { showError("Please select a workflow step"); return; }
+          const scheduleTime = scheduleWrap.classList.contains('hidden') ? null : document.getElementById("scheduleTime").value;
+          if (!scheduleWrap.classList.contains('hidden') && !scheduleTime) {
+            showError("Please select a schedule date and time");
+            return;
+          }
+          const scheduleTimeISO = scheduleTime ? new Date(scheduleTime).toISOString() : null;
           
-          let r;
-          if(action==="workflow"){
-            r = await fetch("/api/workflow",{
-              method:"POST",
-              headers:{"Content-Type":"application/json"},
-              body:JSON.stringify({itemIds:chunk.join(","),languageCodenames:langs,workflowStepId:selectedWorkflowStep,dryRun:dry})
+          // Batched workflow processing with progress tracking
+          const allResults = [];
+          let continueFrom = null;
+          let batchCount = 0;
+          const progressContainer = document.getElementById('browseProgress');
+          const progressFill = document.getElementById('browseProgressFill');
+          const progressText = document.getElementById('browseProgressText');
+          
+          do {
+            batchCount++;
+            
+            const payload = {
+              itemIds: ids,
+              languageCodenames: langs,
+              workflowStepId: selectedWorkflowStep,
+              scheduleTime: scheduleTimeISO,
+              continueFrom
+            };
+            
+            const r = await fetch("/api/workflow", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify(payload)
             });
-          } else {
-            const mode = action==="delete-item"?"item":"variant";
-            finalMode = mode;
-            r = await fetch("/api/delete",{
-              method:"POST",
-              headers:{"Content-Type":"application/json"},
-              body:JSON.stringify({itemIds:chunk.join(","),deleteMode:mode,languageCodenames:langs,dryRun:dry})
-            });
+            
+            if (!r.ok) throw new Error(await r.text());
+            
+            const data = await r.json();
+            if (data.error) throw new Error(data.error);
+            
+            allResults.push(...(data.results || []));
+            
+            // Update progress
+            if (data.incomplete) {
+              progressContainer.classList.remove('hidden');
+              progressFill.style.width = '50%';
+              progressFill.textContent = `${allResults.length} operations`;
+              progressText.textContent = `Processing batch ${batchCount}...`;
+            }
+            
+            continueFrom = data.incomplete ? data.continueFrom : null;
+          } while (continueFrom);
+          
+          // Hide progress and show results
+          progressContainer.classList.add('hidden');
+          log({ results: allResults });
+        } else {
+          const parsedIds = Array.from(new Set(String(ids || "").split(/[,\s]+/).map(x => x.trim()).filter(Boolean)));
+          const mode = action==="delete-item"?"item":"variant";
+          const idChunks = chunkArray(parsedIds, 5);
+          const allResults = [];
+          for (let i = 0; i < idChunks.length; i++) {
+            button.textContent = `Processing chunk ${i + 1}/${idChunks.length}...`;
+            const r = await fetch("/api/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({itemIds:idChunks[i].join(","),deleteMode:mode,languageCodenames:langs})});
+            if (!r.ok) throw new Error(await r.text());
+            const data = await r.json();
+            if (data.results) allResults.push(...data.results);
           }
-
-          if (!r.ok) {
-            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-          }
-
-          const data = await r.json();
-          if (data.results) {
-            mergedResults.push(...data.results);
-          }
+          log({ action: "delete", mode, results: allResults });
         }
-
-        const finalOutput = {
-          action: finalAction,
-          ...(finalMode ? { mode: finalMode } : {}),
-          results: mergedResults
-        };
-        log(finalOutput);
       } catch (error) {
         showError("Operation failed: " + error.message);
-        log({ error: error.message });
       } finally {
         button.classList.remove("loading");
         button.textContent = "Run on pasted IDs";
+        document.getElementById('browseProgress').classList.add('hidden');
       }
     };
 
-    // Browse graph
+    // Browse graph with automatic continuation and progress tracking
     document.getElementById("browse").onclick = async()=>{
       const button = document.getElementById("browse");
       const rootIds = document.getElementById("rootIds").value.split(/[\s,]+/).filter(Boolean);
-      
-      if(!rootIds.length){ 
-        showError("Add at least one root item ID");
-        return; 
-      }
-      
       const lang = document.getElementById("browseLang").value;
-      if(!lang){ 
-        showError("Please select a language");
-        return; 
-      }
+      if(!rootIds.length){ showError("Add at least one root item ID"); return; }
+      if(!lang){ showError("Please select a language"); return; }
       
       const layerEl = document.getElementById("layerEl").value.trim() || "layer";
       const layerFilter = document.getElementById("layerFilter").value.split(/[\s,]+/).filter(Boolean);
       const typeFilter = document.getElementById("typeFilter").value.split(/[\s,]+/).filter(Boolean);
       const maxNodes = +document.getElementById("maxNodes").value || 2000;
+      const progressContainer = document.getElementById('browseProgress');
+      const progressFill = document.getElementById('browseProgressFill');
+      const progressText = document.getElementById('browseProgressText');
 
       try {
         button.classList.add("loading");
+        button.disabled = true;
         button.textContent = "Fetching...";
+        
+        const allItems = [];
+        let continueFrom = null;
+        let batchCount = 0;
 
-        const r = await fetch("/api/graph/query",{method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({rootItemIds:rootIds,languageCodename:lang,layerElementCodename:layerEl,layerFilterIn:layerFilter,typeFilterIn:typeFilter,maxNodes})});
+        // Loop until complete
+        do {
+          batchCount++;
+          
+          const payload = {
+            rootItemIds: rootIds,
+            languageCodename: lang,
+            layerElementCodename: layerEl,
+            layerFilterIn: layerFilter,
+            typeFilterIn: typeFilter,
+            maxNodes,
+            continueFrom
+          };
+          
+          const r = await fetch("/api/graph/query",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify(payload)
+          });
+          
+          if (!r.ok) throw new Error(await r.text());
+          
+          const data = await r.json();
+          if (data.error) throw new Error(data.error);
+          
+          allItems.push(...(data.items || []));
+          
+          // Update progress with pulsing animation since we don't know total
+          progressContainer.classList.remove('hidden');
+          const pulsePercent = 30 + ((allItems.length / 10) % 50);
+          progressFill.style.width = Math.min(90, pulsePercent) + '%';
+          progressFill.textContent = `${allItems.length} items`;
+          progressText.textContent = `Fetching... (batch ${batchCount})`;
+          
+          continueFrom = data.incomplete ? data.continueFrom : null;
+          
+          if (continueFrom) {
+            console.log(`Continuing graph traversal... ${allItems.length} items so far`);
+          }
+        } while (continueFrom);
         
-        if (!r.ok) {
-          throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-        }
+        console.log(`Loop complete! Total items: ${allItems.length}`);
         
-        const data = await r.json();
+        // Combine all results
+        const combinedData = {
+          count: allItems.length,
+          items: allItems,
+          incomplete: false
+        };
         
-        if (data.error) {
-          throw new Error(data.error);
-        }
+        log(combinedData);
         
-        log(data);
-
         const tbl = document.getElementById("resultsTable");
         const body = document.getElementById("resultsBody");
         body.innerHTML="";
         
-        (data.items||[]).forEach(it=>{
-          const layerHtml = (it.layerValues||[])
-            .map(v => '<span class="pill">' + escapeHtml(String(v)) + '</span>')
-            .join('');
+        allItems.forEach(it=>{
+          const layerHtml = (it.layerValues||[]).map(v => '<span class="pill">' + escapeHtml(String(v)) + '</span>').join('');
           const tr = document.createElement("tr");
           tr.innerHTML =
             '<td><input type="checkbox" class="rowChk" value="'+it.id+'"></td>'+
@@ -785,117 +874,334 @@
         
         tbl.classList.remove("hidden");
         document.getElementById("tableActions").classList.remove("hidden");
-        document.getElementById("countLabel").textContent = 'Found ' + (data.count||0) + ' item(s)';
+        document.getElementById("countLabel").textContent = 'Found ' + allItems.length + ' item(s)';
         document.getElementById("checkAll").checked = false;
+        
+        // Update progress to completion
+        progressFill.style.width = '100%';
+        progressFill.textContent = '100%';
+        progressText.textContent = `Complete: ${allItems.length} items`;
+        
+        // Hide progress bar after completion
+        setTimeout(() => {
+          progressContainer.classList.add('hidden');
+        }, 3000);
+        
       } catch (error) {
         showError("Graph query failed: " + error.message);
         log({ error: error.message });
       } finally {
         button.classList.remove("loading");
+        button.disabled = false;
         button.textContent = "Fetch items";
       }
     };
 
-    // Select all
-    document.getElementById("checkAll").onclick = e=>{
-      document.querySelectorAll(".rowChk").forEach(ch=>ch.checked=e.target.checked);
-    };
+    document.getElementById("checkAll").onclick = e => document.querySelectorAll(".rowChk").forEach(ch=>ch.checked=e.target.checked);
 
-    // Apply to selected
     document.getElementById("applySelected").onclick = async()=>{
       const button = document.getElementById("applySelected");
       const ids = Array.from(document.querySelectorAll(".rowChk:checked")).map(c=>c.value);
-      
-      if(!ids.length){
-        showError("No rows selected");
-        return;
-      }
+      if(!ids.length){ showError("No rows selected"); return; }
       
       const action = document.getElementById("selAction").value;
-      const lang = document.getElementById("browseLang").value;
+      const langs = Array.from(document.getElementById("selLanguages").selectedOptions).map(o=>o.value);
+      if(!langs.length){ showError("Please select at least one target language"); return; }
 
       try {
         button.classList.add("loading");
-
-        if(action==="workflow" && !selectedWorkflowStepSel){
-          showError("Please select a workflow step");
-          button.classList.remove("loading");
-          return;
-        }
-
-        // Handle duplication separately
-        if (action === "duplicate") {
-          const sourceLanguage = document.getElementById("selSourceLang").value;
-          const namePrefix = document.getElementById("selDupPrefix").value;
-          const duplicateLinkedItems = document.getElementById("selDupLinked").checked;
-
-          button.textContent = `Duplicating ${ids.length} item(s)...`;
-          const r = await fetch("/api/duplicate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sourceItemIds: ids,
-              sourceLanguage,
-              targetLanguages: [lang],
-              namePrefix,
-              duplicateLinkedItems
-            })
-          });
-          if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-          log(await r.json());
-          button.classList.remove("loading");
-          button.textContent = "Apply to selected";
-          return;
-        }
-
-        const idChunks = chunkArray(ids, 5);
-        const mergedResults = [];
-        let finalAction = action;
-        let finalMode = null;
-
-        for (let i = 0; i < idChunks.length; i++) {
-          const chunk = idChunks[i];
-          button.textContent = `Processing chunk ${i + 1}/${idChunks.length}...`;
+        button.textContent = "Processing...";
+        if(action==="workflow"){
+          if (!selectedWorkflowStepSel) { showError("Please select a workflow step"); return; }
+          const scheduleTime = selScheduleWrap.classList.contains('hidden') ? null : document.getElementById("selScheduleTime").value;
+          if (!selScheduleWrap.classList.contains('hidden') && !scheduleTime) { showError("Please select a schedule date and time"); return; }
+          const scheduleTimeISO = scheduleTime ? new Date(scheduleTime).toISOString() : null;
           
-          let r;
-          if(action==="workflow"){
-            r = await fetch("/api/workflow",{
-              method:"POST",
-              headers:{"Content-Type":"application/json"},
-              body:JSON.stringify({itemIds:chunk.join(","),languageCodenames:[lang],workflowStepId:selectedWorkflowStepSel})
+          // Batched workflow processing with progress tracking
+          const allResults = [];
+          let continueFrom = null;
+          let batchCount = 0;
+          const progressContainer = document.getElementById('browseProgress');
+          const progressFill = document.getElementById('browseProgressFill');
+          const progressText = document.getElementById('browseProgressText');
+          
+          do {
+            batchCount++;
+            
+            const payload = {
+              itemIds: ids.join(","),
+              languageCodenames: langs,
+              workflowStepId: selectedWorkflowStepSel,
+              scheduleTime: scheduleTimeISO,
+              continueFrom
+            };
+            
+            const r = await fetch("/api/workflow", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify(payload)
             });
-          } else {
-            const mode = action==="delete-item"?"item":"variant";
-            finalMode = mode;
-            r = await fetch("/api/delete",{
-              method:"POST",
-              headers:{"Content-Type":"application/json"},
-              body:JSON.stringify({itemIds:chunk.join(","),deleteMode:mode,languageCodenames:[lang]})
-            });
+            
+            if (!r.ok) throw new Error(await r.text());
+            
+            const data = await r.json();
+            if (data.error) throw new Error(data.error);
+            
+            allResults.push(...(data.results || []));
+            
+            // Update progress
+            if (data.incomplete) {
+              progressContainer.classList.remove('hidden');
+              progressFill.style.width = '50%';
+              progressFill.textContent = `${allResults.length} operations`;
+              progressText.textContent = `Processing batch ${batchCount}...`;
+            }
+            
+            continueFrom = data.incomplete ? data.continueFrom : null;
+          } while (continueFrom);
+          
+          // Hide progress and show results
+          progressContainer.classList.add('hidden');
+          log({ results: allResults });
+        } else {
+          const mode = action==="delete-item"?"item":"variant";
+          const idChunks = chunkArray(ids, 5);
+          const allResults = [];
+          for (let i = 0; i < idChunks.length; i++) {
+            button.textContent = `Processing chunk ${i + 1}/${idChunks.length}...`;
+            const r = await fetch("/api/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({itemIds:idChunks[i].join(","),deleteMode:mode,languageCodenames:langs})});
+            if (!r.ok) throw new Error(await r.text());
+            const data = await r.json();
+            if (data.results) allResults.push(...data.results);
           }
-
-          if (!r.ok) {
-            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-          }
-
-          const data = await r.json();
-          if (data.results) {
-            mergedResults.push(...data.results);
-          }
+          log({ action: "delete", mode, results: allResults });
         }
-
-        const finalOutput = {
-          action: finalAction,
-          ...(finalMode ? { mode: finalMode } : {}),
-          results: mergedResults
-        };
-        log(finalOutput);
       } catch (error) {
         showError("Bulk operation failed: " + error.message);
-        log({ error: error.message });
       } finally {
         button.classList.remove("loading");
         button.textContent = "Apply to selected";
+        document.getElementById('browseProgress').classList.add('hidden');
+      }
+    };
+
+    document.getElementById("dupPreview").onclick = async () => {
+      const button = document.getElementById("dupPreview");
+      const sourceId = document.getElementById("dupSourceId").value.trim();
+      const sourceLang = document.getElementById("dupSourceLang").value;
+      const maxDepth = +document.getElementById("dupMaxDepth").value || 10;
+      const namePrefix = document.getElementById("dupPrefix").value;
+      const nameSuffix = document.getElementById("dupSuffix").value;
+
+      if (!sourceId || !sourceLang) { showError("Please enter a source item ID and select a language"); return; }
+
+      try {
+        button.classList.add("loading");
+        button.textContent = "Analyzing...";
+        const response = await fetch("/api/duplicate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourceItemId: sourceId, sourceLanguage: sourceLang, maxDepth: maxDepth, dryRun: true })
+        });
+
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+
+        const resultsDiv = document.getElementById("dupResults");
+        let html = `
+          <div style="background: white; padding: 20px; border-radius: 8px; margin-top: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h3 style="color: var(--kontent-black); margin-top: 0;">Duplication Preview (${data.totalItems} items)</h3>
+            <p style="color: #666; font-size: 14px;"><em>Review the items and choose which ones to duplicate. Unchecked items will be linked to the original.</em></p>
+            <div style="margin: 12px 0; display: flex; gap: 8px;">
+              <button type="button" id="dupSelectAll" style="width: auto; padding: 8px 16px; font-size: 13px; text-transform: none;">Select All</button>
+              <button type="button" id="dupDeselectAll" style="width: auto; padding: 8px 16px; font-size: 13px; background: #757575; text-transform: none;">Deselect All</button>
+            </div>
+            <table style="margin-top: 16px;">
+              <thead>
+                <tr>
+                  <th style="width:120px">Action</th>
+                  <th>Source Name</th>
+                  <th>New Name (if duplicating)</th>
+                  <th>Type</th>
+                  <th>Depth</th>
+                </tr>
+              </thead>
+              <tbody>`;
+        
+        (data.preview || []).forEach((item, index) => {
+          const defaultNewName = `${namePrefix}${item.name}${nameSuffix}`;
+          const isRoot = index === 0;
+          html += `
+            <tr>
+              <td>
+                ${isRoot ? 
+                  '<span class="pill" style="background: #4CAF50;">DUPLICATE</span><input type="hidden" class="dupItemChk" value="' + item.id + '" checked />' : 
+                  '<label style="font-size: 12px; text-transform: none; display: flex; align-items: center; gap: 8px;"><input type="checkbox" class="dupItemChk" value="' + item.id + '" checked /> Duplicate</label>'
+                }
+              </td>
+              <td>${escapeHtml(item.name)}</td>
+              <td><input type="text" class="dup-new-name" data-source-id="${item.id}" value="${escapeHtml(defaultNewName)}" style="padding: 6px;" /></td>
+              <td>${escapeHtml(item.type || '')}</td>
+              <td>${item.depth}</td>
+            </tr>`;
+        });
+        
+        html += `</tbody></table>
+          <p style="margin-top: 16px; padding: 12px; background: #fff3cd; border-left: 4px solid #ffc107; font-size: 14px;">
+            <strong>💡 Tip:</strong> The root item (depth 0) will always be duplicated. For child items, check the box to create a duplicate, or leave unchecked to link to the original item.
+          </p>
+        </div>`;
+        resultsDiv.innerHTML = html;
+        
+        // Select All button handler
+        const selectAllBtn = document.getElementById("dupSelectAll");
+        if (selectAllBtn) {
+          selectAllBtn.onclick = () => {
+            document.querySelectorAll('.dupItemChk[type="checkbox"]').forEach(ch => {
+              ch.checked = true;
+              const nameInput = document.querySelector(`.dup-new-name[data-source-id="${ch.value}"]`);
+              if (nameInput) {
+                nameInput.disabled = false;
+                nameInput.style.opacity = '1';
+                nameInput.style.background = 'white';
+              }
+            });
+          };
+        }
+        
+        // Deselect All button handler
+        const deselectAllBtn = document.getElementById("dupDeselectAll");
+        if (deselectAllBtn) {
+          deselectAllBtn.onclick = () => {
+            document.querySelectorAll('.dupItemChk[type="checkbox"]').forEach(ch => {
+              ch.checked = false;
+              const nameInput = document.querySelector(`.dup-new-name[data-source-id="${ch.value}"]`);
+              if (nameInput) {
+                nameInput.disabled = true;
+                nameInput.style.opacity = '0.5';
+                nameInput.style.background = '#f5f5f5';
+              }
+            });
+          };
+        }
+        
+        // Enable/disable name input based on checkbox state
+        document.querySelectorAll('.dupItemChk[type="checkbox"]').forEach(checkbox => {
+          const nameInput = document.querySelector(`.dup-new-name[data-source-id="${checkbox.value}"]`);
+          if (nameInput) {
+            checkbox.addEventListener('change', () => {
+              nameInput.disabled = !checkbox.checked;
+              if (!checkbox.checked) {
+                nameInput.style.opacity = '0.5';
+                nameInput.style.background = '#f5f5f5';
+              } else {
+                nameInput.style.opacity = '1';
+                nameInput.style.background = 'white';
+              }
+            });
+          }
+        });
+        
+        log(data);
+      } catch (error) {
+        showError("Preview failed: " + error.message);
+      } finally {
+        button.classList.remove("loading");
+        button.textContent = "Preview duplication";
+      }
+    };
+
+    document.getElementById("dupExecute").onclick = async () => {
+      const button = document.getElementById("dupExecute");
+      
+      // Get all checkboxes (including hidden ones for root items)
+      const allCheckboxes = document.querySelectorAll(".dupItemChk");
+      const selectedItems = Array.from(allCheckboxes)
+        .filter(ch => ch.checked || ch.type === 'hidden')
+        .map(ch => ch.value);
+      
+      if (allCheckboxes.length === 0) { 
+        showError("Please run 'Preview duplication' first."); 
+        return; 
+      }
+      if (selectedItems.length === 0) { 
+        showError("At least the root item must be selected for duplication."); 
+        return; 
+      }
+      
+      const sourceLang = document.getElementById("dupSourceLang").value;
+      const targetLangs = Array.from(document.getElementById("dupTargetLangs").selectedOptions).map(o => o.value);
+      const maxDepth = +document.getElementById("dupMaxDepth").value || 10;
+      const collectionId = document.getElementById("dupCollectionId").value.trim() || null;
+      const duplicateLinkedItems = document.getElementById("dupDeep").checked;
+
+      const nameOverrides = {};
+      document.querySelectorAll('.dup-new-name').forEach(input => {
+          const sourceId = input.dataset.sourceId;
+          if (selectedItems.includes(sourceId)) {
+              nameOverrides[sourceId] = input.value.trim();
+          }
+      });
+
+      if (!sourceLang || !targetLangs.length) { showError("Please select source and target languages."); return; }
+
+      if (!confirm(`This will duplicate ${selectedItems.length} selected item(s) and their relationships. Continue?`)) { return; }
+
+      try {
+        button.classList.add("loading");
+        button.textContent = "Duplicating...";
+        const response = await fetch("/api/duplicate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceItemIds: selectedItems,
+            sourceLanguage: sourceLang,
+            targetLanguages: targetLangs,
+            nameOverrides: nameOverrides,
+            maxDepth,
+            collectionId,
+            duplicateLinkedItems: duplicateLinkedItems
+          })
+        });
+
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+
+        let html = `
+            <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; margin-top: 20px; border-left: 4px solid #4CAF50;">
+                <h3 style="color: #2e7d32; margin-top: 0;">✓ Duplication Complete</h3>
+                <p><strong>Total items duplicated:</strong> ${data.totalDuplicated}</p>
+        `;
+        
+        if (data.errors && data.errors.length > 0) {
+          html += '<h4 style="color: #d32f2f;">Errors:</h4><ul>';
+          data.errors.forEach(err => {
+            if (!err.skipped) {
+              html += `<li style="color: #d32f2f;">${escapeHtml(err.itemName || err.itemId)}: ${escapeHtml(err.error)}</li>`;
+            }
+          });
+          html += '</ul>';
+        }
+        
+        if (data.results && data.results.length > 0) {
+          html += '<h4>Results:</h4><table style="margin-top: 16px;"><thead><tr><th>Source Name</th><th>New Name</th><th>Type</th></tr></thead><tbody>';
+          data.results.forEach(res => {
+            html += `<tr><td>${escapeHtml(res.sourceName)}</td><td>${escapeHtml(res.newName)}</td><td>${escapeHtml(res.type)}</td></tr>`;
+          });
+          html += '</tbody></table>';
+        }
+        
+        html += '</div>';
+        document.getElementById("dupResults").innerHTML = html;
+        log(data);
+      } catch (error) {
+        showError("Duplication failed: " + error.message);
+      } finally {
+        button.classList.remove("loading");
+        button.textContent = "Execute duplication";
       }
     };
 

@@ -454,6 +454,14 @@
     let selectedWorkflowStep = null;
     let selectedWorkflowStepSel = null;
 
+    function chunkArray(array, size) {
+      const chunks = [];
+      for (let i = 0; i < array.length; i += size) {
+        chunks.push(array.slice(i, i + size));
+      }
+      return chunks;
+    }
+
     const out = document.getElementById("out");
     const errorContainer = document.getElementById("errorContainer");
     
@@ -561,37 +569,63 @@
       const langs = Array.from(document.getElementById("languages").selectedOptions).map(o=>o.value);
       const dry = document.getElementById("dry").checked;
       
-      if(!ids.trim()){ 
+      const parsedIds = Array.from(new Set(String(ids || "").split(/[,\s]+/).map(x => x.trim()).filter(Boolean)));
+      if(!parsedIds.length){ 
         showError("Please paste at least one item ID");
         return; 
       }
 
       try {
         button.classList.add("loading");
-        button.textContent = "Processing...";
-
-        if(action==="workflow"){
-          if (!selectedWorkflowStep) {
-            showError("Please select a workflow step");
-            return;
-          }
-          const r = await fetch("/api/workflow",{method:"POST",headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({itemIds:ids,languageCodenames:langs,workflowStepId:selectedWorkflowStep,dryRun:dry})});
-          
-          if (!r.ok) {
-            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-          }
-          log(await r.json());
-        } else {
-          const mode = action==="delete-item"?"item":"variant";
-          const r = await fetch("/api/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({itemIds:ids,deleteMode:mode,languageCodenames:langs,dryRun:dry})});
-          
-          if (!r.ok) {
-            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-          }
-          log(await r.json());
+        
+        if(action==="workflow" && !selectedWorkflowStep){
+          showError("Please select a workflow step");
+          button.classList.remove("loading");
+          return;
         }
+
+        const idChunks = chunkArray(parsedIds, 5);
+        const mergedResults = [];
+        let finalAction = action;
+        let finalMode = null;
+
+        for (let i = 0; i < idChunks.length; i++) {
+          const chunk = idChunks[i];
+          button.textContent = `Processing chunk ${i + 1}/${idChunks.length}...`;
+          
+          let r;
+          if(action==="workflow"){
+            r = await fetch("/api/workflow",{
+              method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({itemIds:chunk.join(","),languageCodenames:langs,workflowStepId:selectedWorkflowStep,dryRun:dry})
+            });
+          } else {
+            const mode = action==="delete-item"?"item":"variant";
+            finalMode = mode;
+            r = await fetch("/api/delete",{
+              method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({itemIds:chunk.join(","),deleteMode:mode,languageCodenames:langs,dryRun:dry})
+            });
+          }
+
+          if (!r.ok) {
+            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+          }
+
+          const data = await r.json();
+          if (data.results) {
+            mergedResults.push(...data.results);
+          }
+        }
+
+        const finalOutput = {
+          action: finalAction,
+          ...(finalMode ? { mode: finalMode } : {}),
+          results: mergedResults
+        };
+        log(finalOutput);
       } catch (error) {
         showError("Operation failed: " + error.message);
         log({ error: error.message });
@@ -693,30 +727,55 @@
 
       try {
         button.classList.add("loading");
-        button.textContent = "Processing...";
 
-        if(action==="workflow"){
-          if (!selectedWorkflowStepSel) {
-            showError("Please select a workflow step");
-            return;
-          }
-          const r = await fetch("/api/workflow",{method:"POST",headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({itemIds:ids.join(","),languageCodenames:[lang],workflowStepId:selectedWorkflowStepSel})});
-          
-          if (!r.ok) {
-            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-          }
-          log(await r.json());
-        } else {
-          const mode = action==="delete-item"?"item":"variant";
-          const r = await fetch("/api/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({itemIds:ids.join(","),deleteMode:mode,languageCodenames:[lang]})});
-          
-          if (!r.ok) {
-            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
-          }
-          log(await r.json());
+        if(action==="workflow" && !selectedWorkflowStepSel){
+          showError("Please select a workflow step");
+          button.classList.remove("loading");
+          return;
         }
+
+        const idChunks = chunkArray(ids, 5);
+        const mergedResults = [];
+        let finalAction = action;
+        let finalMode = null;
+
+        for (let i = 0; i < idChunks.length; i++) {
+          const chunk = idChunks[i];
+          button.textContent = `Processing chunk ${i + 1}/${idChunks.length}...`;
+          
+          let r;
+          if(action==="workflow"){
+            r = await fetch("/api/workflow",{
+              method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({itemIds:chunk.join(","),languageCodenames:[lang],workflowStepId:selectedWorkflowStepSel})
+            });
+          } else {
+            const mode = action==="delete-item"?"item":"variant";
+            finalMode = mode;
+            r = await fetch("/api/delete",{
+              method:"POST",
+              headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({itemIds:chunk.join(","),deleteMode:mode,languageCodenames:[lang]})
+            });
+          }
+
+          if (!r.ok) {
+            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+          }
+
+          const data = await r.json();
+          if (data.results) {
+            mergedResults.push(...data.results);
+          }
+        }
+
+        const finalOutput = {
+          action: finalAction,
+          ...(finalMode ? { mode: finalMode } : {}),
+          results: mergedResults
+        };
+        log(finalOutput);
       } catch (error) {
         showError("Bulk operation failed: " + error.message);
         log({ error: error.message });

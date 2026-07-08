@@ -122,6 +122,32 @@ async function createNewVersion(itemId, languageCodename) {
   );
 }
 
+async function runWithConcurrency(tasks, limit, fn) {
+  const results = new Array(tasks.length);
+  const executing = new Set();
+  
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i];
+    const p = (async () => {
+      try {
+        const res = await fn(task);
+        results[i] = res;
+      } catch (err) {
+        results[i] = { error: err.message };
+      }
+    })();
+    
+    executing.add(p);
+    p.then(() => executing.delete(p));
+    
+    if (executing.size >= limit) {
+      await Promise.race(executing);
+    }
+  }
+  await Promise.all(executing);
+  return results;
+}
+
 // ===== GRAPH TRAVERSAL HELPERS =====
 
 // Extract linked item IDs from various shapes (linked-items, rich text, components, HTML fallback)
@@ -475,71 +501,72 @@ app.post("/api/workflow", async (req, res) => {
     return res.status(400).json({ error: `Cannot resolve workflow for step ${workflowStepId}` });
   }
 
-  const results = [];
-
+  const tasks = [];
   for (const id of ids) {
     for (const lang of langs) {
-      try {
-        if (dryRun) { results.push({ id, lang, status: "DRY_RUN" }); continue; }
-
-        // Published target -> use publish endpoint
-        if (target.published) {
-          await backoff(() =>
-            client.publishLanguageVariant()
-              .byItemId(id)
-              .byLanguageCodename(lang)
-              .withData({})
-              .toPromise()
-          );
-          results.push({ id, lang, status: "PUBLISHED" });
-          continue;
-        }
-
-        // Archived target -> use unpublish endpoint
-        if (target.archived) {
-          await backoff(() =>
-            client.unpublishLanguageVariant()
-              .byItemId(id)
-              .byLanguageCodename(lang)
-              .withData({})
-              .toPromise()
-          );
-          results.push({ id, lang, status: "UNPUBLISHED" });
-          continue;
-        }
-
-        // Normal step: try once; if blocked by Publish guard, create new version and retry once
-        const doMove = () =>
-          client.changeWorkflowOfLanguageVariant()
-            .byItemId(id)
-            .byLanguageCodename(lang)
-            .withData({
-              workflow_identifier: { id: wfId },
-              step_identifier: { id: workflowStepId }
-            })
-            .toPromise();
-
-        try {
-          await backoff(doMove);
-          results.push({ id, lang, status: "MOVED", step: target.codename || target.name, newVersionCreated: false });
-        } catch (errFirst) {
-          if (!isPublishGuardError(errFirst)) throw errFirst;
-
-          await createNewVersion(id, lang);
-          await backoff(doMove);
-          results.push({ id, lang, status: "MOVED", step: target.codename || target.name, newVersionCreated: true });
-        }
-      } catch (e) {
-        const apiMsg = e?.originalError?.response?.data?.message
-          || e?.response?.data?.message
-          || e?.message
-          || String(e);
-        const validation = e?.originalError?.response?.data?.validation_errors
-          || e?.response?.data?.validation_errors;
-        results.push({ id, lang, status: "ERROR", message: apiMsg, validation_errors: validation });
-      }
+      tasks.push({ id, lang });
     }
   }
+
+  const results = await runWithConcurrency(tasks, 5, async ({ id, lang }) => {
+    try {
+      if (dryRun) return { id, lang, status: "DRY_RUN" };
+
+      // Published target -> use publish endpoint
+      if (target.published) {
+        await backoff(() =>
+          client.publishLanguageVariant()
+            .byItemId(id)
+            .byLanguageCodename(lang)
+            .withData({})
+            .toPromise()
+        );
+        return { id, lang, status: "PUBLISHED" };
+      }
+
+      // Archived target -> use unpublish endpoint
+      if (target.archived) {
+        await backoff(() =>
+          client.unpublishLanguageVariant()
+            .byItemId(id)
+            .byLanguageCodename(lang)
+            .withData({})
+            .toPromise()
+        );
+        return { id, lang, status: "UNPUBLISHED" };
+      }
+
+      // Normal step: try once; if blocked by Publish guard, create new version and retry once
+      const doMove = () =>
+        client.changeWorkflowOfLanguageVariant()
+          .byItemId(id)
+          .byLanguageCodename(lang)
+          .withData({
+            workflow_identifier: { id: wfId },
+            step_identifier: { id: workflowStepId }
+          })
+          .toPromise();
+
+      try {
+        await backoff(doMove);
+        return { id, lang, status: "MOVED", step: target.codename || target.name, newVersionCreated: false };
+      } catch (errFirst) {
+        if (!isPublishGuardError(errFirst)) throw errFirst;
+
+        await createNewVersion(id, lang);
+        await backoff(doMove);
+        return { id, lang, status: "MOVED", step: target.codename || target.name, newVersionCreated: true };
+      }
+    } catch (e) {
+      const apiMsg = e?.originalError?.response?.data?.message
+        || e?.response?.data?.message
+        || e?.message
+        || String(e);
+      const validation = e?.originalError?.response?.data?.validation_errors
+        || e?.response?.data?.validation_errors;
+      return { id, lang, status: "ERROR", message: apiMsg, validation_errors: validation };
+    }
+  });
 
   res.json({ action: "workflow", results });
 });
@@ -552,35 +579,41 @@ app.post("/api/delete", async (req, res) => {
     return res.status(400).json({ error: "deleteMode must be 'item' or 'variant'" });
   }
 
-  const results = [];
+  let results = [];
 
   if (deleteMode === "item") {
-    for (const id of ids) {
+    const tasks = ids.map(id => ({ id }));
+    results = await runWithConcurrency(tasks, 5, async ({ id }) => {
       try {
-        if (dryRun) { results.push({ id, status: "DRY_RUN_ITEM" }); continue; }
+        if (dryRun) return { id, status: "DRY_RUN_ITEM" };
         await backoff(() => client.deleteContentItem().byItemId(id).toPromise());
-        results.push({ id, status: "DELETED_ITEM" });
+        return { id, status: "DELETED_ITEM" };
       } catch (e) {
-        results.push({ id, status: "ERROR", message: e.message });
+        return { id, status: "ERROR", message: e.message };
       }
-    }
+    });
   } else {
     const langs = Array.isArray(languageCodenames) ? languageCodenames.filter(Boolean) : [];
     if (!langs.length) return res.status(400).json({ error: "No languages for variant delete" });
 
+    const tasks = [];
     for (const id of ids) {
       for (const lang of langs) {
-        try {
-          if (dryRun) { results.push({ id, lang, status: "DRY_RUN_VARIANT" }); continue; }
-          await backoff(() =>
-            client.deleteLanguageVariant().byItemId(id).byLanguageCodename(lang).toPromise()
-          );
-          results.push({ id, lang, status: "DELETED_VARIANT" });
-        } catch (e) {
-          results.push({ id, lang, status: "ERROR", message: e.message });
-        }
+        tasks.push({ id, lang });
       }
     }
+
+    results = await runWithConcurrency(tasks, 5, async ({ id, lang }) => {
+      try {
+        if (dryRun) return { id, lang, status: "DRY_RUN_VARIANT" };
+        await backoff(() =>
+          client.deleteLanguageVariant().byItemId(id).byLanguageCodename(lang).toPromise()
+        );
+        return { id, lang, status: "DELETED_VARIANT" };
+      } catch (e) {
+        return { id, lang, status: "ERROR", message: e.message };
+      }
+    });
   }
 
   res.json({ action: "delete", mode: deleteMode, results });

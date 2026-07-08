@@ -1,7 +1,7 @@
 [build]
   command = "npm install"
   functions = "netlify/functions"
-  publish = "."
+  publish = "public"
 
 [build.environment]
   NODE_VERSION = "18"
@@ -12,7 +12,7 @@
 
 [dev]
   port = 8888
-  publish = "."
+  publish = "public"
   functions = "netlify/functions"
   envFiles = [".env"]
 

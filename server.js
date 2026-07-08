@@ -541,8 +541,10 @@ app.post("/api/workflow", async (req, res) => {
         const startIndex = continueFrom?.nextIndex ?? 0;
         const slice = allOperations.slice(startIndex);
 
-        // Timeout guard — leave 3s headroom under Netlify's 20s limit
-        const MAX_MS = 12000;
+        // Timeout guard — 8s hard cap so a single batch of retried requests
+        // can never consume the remaining Lambda time and trigger a gateway timeout.
+        // Each sub-batch is 3 concurrent max so backoff retries stay predictable.
+        const MAX_MS = 8000;
         const startTime = Date.now();
 
         const results = [];
@@ -551,8 +553,8 @@ app.post("/api/workflow", async (req, res) => {
             return res.json({ results: slice.map(({ id, lang }) => ({ id, lang, status: "DRY_RUN" })) });
         }
 
-        // Process in sub-batches of 5, checking elapsed time between each batch
-        const BATCH = 5;
+        // Process in sub-batches of 3, checking elapsed time before every batch
+        const BATCH = 3;
         let processedCount = 0;
 
         for (let i = 0; i < slice.length; i += BATCH) {
@@ -568,7 +570,7 @@ app.post("/api/workflow", async (req, res) => {
             }
 
             const batch = slice.slice(i, i + BATCH);
-            const batchResults = await runWithConcurrency(batch, 5, async ({ id, lang }) => {
+            const batchResults = await runWithConcurrency(batch, 3, async ({ id, lang }) => {
                 try {
                     if (targetStep.published) {
                         if (scheduleTime) {

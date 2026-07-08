@@ -2,11 +2,23 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { createRequire } from "module";
-import { fileURLToPath } from "url";
 import { createManagementClient } from "@kontent-ai/management-sdk";
 import serverless from "serverless-http";
 
-const require = createRequire(import.meta.url);
+// createRequire needs an absolute path or file URL.
+// import.meta.url is undefined when esbuild compiles to CJS (Netlify Lambda).
+// Fall back through __filename (CJS) → process.cwd() so it always works.
+const _require = (() => {
+  try {
+    if (typeof import.meta !== "undefined" && import.meta.url)
+      return createRequire(import.meta.url);
+  } catch (_) {}
+  try {
+    if (typeof __filename !== "undefined" && __filename)
+      return createRequire(__filename);
+  } catch (_) {}
+  return createRequire(`file://${process.cwd()}/server.js`);
+})();
 
 const app = express();
 app.use(cors());
@@ -35,13 +47,13 @@ let cacheInitialized = false;
 // These are inlined by esbuild at build time via createRequire — no runtime file I/O needed.
 let _languagesJson, _workflowJson;
 try {
-  _languagesJson = require("./languages.json");
-  _workflowJson = require("./workflow.json");
+  _languagesJson = _require("./languages.json");
+  _workflowJson  = _require("./workflow.json");
   console.log("Loaded languages.json and workflow.json via require");
 } catch (e) {
   console.error("Failed to require JSON files:", e.message);
   _languagesJson = { languages: [] };
-  _workflowJson = [];
+  _workflowJson  = [];
 }
 
 let activeLanguages = ((_languagesJson.languages || []))

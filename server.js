@@ -1,49 +1,12 @@
-// Load environment variables more explicitly for serverless functions
-import { config } from 'dotenv';
-import { fileURLToPath } from 'url';
-import path from 'path';
-
-// Handle __dirname in serverless environment
-let functionDir;
-try {
-  if (typeof import.meta !== 'undefined' && import.meta.url) {
-    const __filename = fileURLToPath(import.meta.url);
-    functionDir = path.dirname(__filename);
-  } else {
-    functionDir = process.cwd();
-  }
-} catch (e) {
-  functionDir = process.cwd();
-}
-
-// Try loading .env from multiple possible locations (only for local dev)
-if (!process.env.NETLIFY) {
-  const envPaths = [
-    path.resolve(functionDir, '../../.env'),
-    path.resolve(functionDir, '.env'),
-    path.resolve(process.cwd(), '.env'),
-    '.env'
-  ];
-
-  for (const envPath of envPaths) {
-    try {
-      const result = config({ path: envPath });
-      if (!result.error) {
-        console.log(`Successfully loaded .env from: ${envPath}`);
-        break;
-      }
-    } catch (e) {
-      // Silent fail, try next path
-    }
-  }
-}
-
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import fs from "fs";
+import { createRequire } from "module";
+import { fileURLToPath } from "url";
 import { createManagementClient } from "@kontent-ai/management-sdk";
 import serverless from "serverless-http";
+
+const require = createRequire(import.meta.url);
 
 const app = express();
 app.use(cors());
@@ -69,168 +32,81 @@ let stepToWorkflow = new Map();
 let cacheInitialized = false;
 
 // ---- Load languages & workflow data ----
-async function loadStaticData() {
-  try {
-    let languagesJson, localWfRaw;
-    
-    // Try to load from local files first (for dev)
-    let basePath;
-    if (process.env.NETLIFY_DEV) {
-      basePath = process.cwd();
-    } else if (process.env.NETLIFY) {
-      // In Netlify deployment, files should be in the same directory as the function
-      basePath = functionDir;
-    } else {
-      basePath = path.join(functionDir, '../..');
-      if (!fs.existsSync(path.join(basePath, "languages.json"))) {
-        basePath = process.cwd();
-      }
-    }
-    
-    console.log("Trying to load files from:", basePath);
-    
-    try {
-      const langPath = path.join(basePath, "languages.json");
-      console.log("Languages file path:", langPath);
-      console.log("Languages file exists:", fs.existsSync(langPath));
-      languagesJson = JSON.parse(fs.readFileSync(langPath, "utf-8"));
-      console.log("Loaded languages from file:", languagesJson.languages?.length || 0);
-    } catch (e) {
-      console.log("Could not load languages.json from file:", e.message);
-      console.log("Fetching from API...");
-      // Fetch from API if file doesn't exist
-      if (client) {
-        try {
-          const response = await client.listLanguages().toPromise();
-          console.log("API response for languages:", response);
-          // The SDK returns data.items which are LanguageModel objects
-          const languagesData = response.data?.items || [];
-          // Convert LanguageModel objects to plain objects
-          languagesJson = { 
-            languages: languagesData.map(lang => ({
-              id: lang.id,
-              name: lang.name,
-              codename: lang.codename,
-              is_active: lang.isActive,
-              is_default: lang.isDefault,
-              fallback_language: lang.fallbackLanguage
-            }))
-          };
-          console.log("Fetched languages from API:", languagesJson.languages.length);
-        } catch (apiError) {
-          console.error("Could not fetch languages from API:", apiError.message);
-          console.error("Full error:", apiError);
-          languagesJson = { languages: [] };
-        }
-      } else {
-        console.error("Client not initialized, cannot fetch languages");
-        languagesJson = { languages: [] };
-      }
-    }
-    
-    try {
-      const wfPath = path.join(basePath, "workflow.json");
-      console.log("Workflow file path:", wfPath);
-      console.log("Workflow file exists:", fs.existsSync(wfPath));
-      localWfRaw = JSON.parse(fs.readFileSync(wfPath, "utf-8"));
-      console.log("Loaded workflow from file");
-    } catch (e) {
-      console.log("Could not load workflow.json from file:", e.message);
-      console.log("Fetching from API...");
-      // Fetch from API if file doesn't exist
-      if (client) {
-        try {
-          const { data } = await client.listWorkflows().toPromise();
-          const workflows = data?.items || data || [];
-          // Use the first workflow (default workflow)
-          localWfRaw = workflows.length > 0 ? workflows[0] : { steps: [], published_step: null, archived_step: null, scheduled_step: null };
-          console.log("Fetched workflow from API");
-        } catch (apiError) {
-          console.error("Could not fetch workflows from API:", apiError.message);
-          localWfRaw = { steps: [], published_step: null, archived_step: null, scheduled_step: null };
-        }
-      } else {
-        console.error("Client not initialized, cannot fetch workflows");
-        localWfRaw = { steps: [], published_step: null, archived_step: null, scheduled_step: null };
-      }
-    }
-
-    return { languagesJson, localWfRaw };
-  } catch (e) {
-    console.error("Error loading static data:", e);
-    
-    // Last resort: try to fetch everything from API
-    if (client) {
-      console.log("Attempting to fetch all data from API as fallback...");
-      try {
-        const [langResponse, wfResponse] = await Promise.all([
-          client.listLanguages().toPromise().catch(() => null),
-          client.listWorkflows().toPromise().catch(() => null)
-        ]);
-        
-        const languagesJson = langResponse ? 
-          { languages: langResponse.data?.items || langResponse.data || [] } : 
-          { languages: [] };
-          
-        const workflows = wfResponse ? (wfResponse.data?.items || wfResponse.data || []) : [];
-        const localWfRaw = workflows.length > 0 ? workflows[0] : { steps: [], published_step: null, archived_step: null, scheduled_step: null };
-        
-        console.log("Fallback fetch complete:", { 
-          languages: languagesJson.languages.length, 
-          hasWorkflow: !!localWfRaw.steps 
-        });
-        
-        return { languagesJson, localWfRaw };
-      } catch (apiError) {
-        console.error("Fallback API fetch failed:", apiError);
-      }
-    }
-    
-    return { 
-      languagesJson: { languages: [] }, 
-      localWfRaw: { steps: [], published_step: null, archived_step: null, scheduled_step: null }
-    };
-  }
+// These are inlined by esbuild at build time via createRequire — no runtime file I/O needed.
+let _languagesJson, _workflowJson;
+try {
+  _languagesJson = require("./languages.json");
+  _workflowJson = require("./workflow.json");
+  console.log("Loaded languages.json and workflow.json via require");
+} catch (e) {
+  console.error("Failed to require JSON files:", e.message);
+  _languagesJson = { languages: [] };
+  _workflowJson = [];
 }
 
-let activeLanguages = [];
-let workflowStepsForUi = [];
+let activeLanguages = ((_languagesJson.languages || []))
+  .filter(l => l.is_active)
+  .map(l => ({ id: l.id, name: l.name, codename: l.codename }));
 
+const _localWfRaw = Array.isArray(_workflowJson) ? _workflowJson[0] : _workflowJson;
+
+let workflowStepsForUi = [
+  ...(_localWfRaw?.steps || []),
+  _localWfRaw?.published_step ? { ..._localWfRaw.published_step, published: true } : null,
+  _localWfRaw?.archived_step ? { ..._localWfRaw.archived_step, archived: true } : null,
+  _localWfRaw?.scheduled_step ? { ..._localWfRaw.scheduled_step, scheduled: true } : null,
+].filter(Boolean).map(s => ({
+  id: s.id,
+  name: s.name,
+  codename: s.codename,
+  published: !!s.published,
+  archived: !!s.archived,
+  scheduled: !!s.scheduled
+}));
+
+// If the static JSON was empty, try fetching from the live API on first request
 async function ensureInitialized() {
   if (cacheInitialized) return;
-  
-  const { languagesJson, localWfRaw } = await loadStaticData();
-  
-  activeLanguages = (languagesJson.languages || [])
-    .filter(l => l.is_active)
-    .map(l => ({ id: l.id, name: l.name, codename: l.codename }));
-
-  const localWf = Array.isArray(localWfRaw) ? localWfRaw[0] : localWfRaw;
-
-  workflowStepsForUi = [
-    ...(localWf.steps || []),
-    localWf.published_step || localWf.publishedStep ? { 
-      ...(localWf.published_step || localWf.publishedStep), 
-      published: true 
-    } : null,
-    localWf.archived_step || localWf.archivedStep ? { 
-      ...(localWf.archived_step || localWf.archivedStep), 
-      archived: true 
-    } : null,
-    localWf.scheduled_step || localWf.scheduledStep ? { 
-      ...(localWf.scheduled_step || localWf.scheduledStep), 
-      scheduled: true 
-    } : null
-  ].filter(Boolean).map(s => ({
-    id: s.id,
-    name: s.name,
-    codename: s.codename,
-    published: !!s.published,
-    archived: !!s.archived,
-    scheduled: !!s.scheduled
-  }));
-
   cacheInitialized = true;
+
+  // Only attempt live API hydration if static data was missing
+  if (activeLanguages.length === 0 && client) {
+    try {
+      const { data } = await client.listLanguages().toPromise();
+      activeLanguages = (data?.items || [])
+        .filter(l => l.isActive)
+        .map(l => ({ id: l.id, name: l.name, codename: l.codename }));
+      console.log("Hydrated languages from API:", activeLanguages.length);
+    } catch (e) {
+      console.error("Failed to hydrate languages from API:", e.message);
+    }
+  }
+
+  if (workflowStepsForUi.length === 0 && client) {
+    try {
+      const { data } = await client.listWorkflows().toPromise();
+      const workflows = data?.items || data || [];
+      const wf = workflows[0];
+      if (wf) {
+        workflowStepsForUi = [
+          ...(wf.steps || []),
+          wf.publishedStep ? { ...wf.publishedStep, published: true } : null,
+          wf.archivedStep ? { ...wf.archivedStep, archived: true } : null,
+          wf.scheduledStep ? { ...wf.scheduledStep, scheduled: true } : null,
+        ].filter(Boolean).map(s => ({
+          id: s.id,
+          name: s.name,
+          codename: s.codename,
+          published: !!s.published,
+          archived: !!s.archived,
+          scheduled: !!s.scheduled
+        }));
+        console.log("Hydrated workflow steps from API:", workflowStepsForUi.length);
+      }
+    } catch (e) {
+      console.error("Failed to hydrate workflows from API:", e.message);
+    }
+  }
 }
 
 // ===== HYDRATORS =====
@@ -241,10 +117,15 @@ async function hydrateWorkflows() {
   const workflows = data?.items || data || [];
   for (const wf of workflows) {
     (wf.steps || []).forEach(st => stepToWorkflow.set(st.id, wf.id));
-    if (wf.published_step?.id) stepToWorkflow.set(wf.published_step.id, wf.id);
-    if (wf.archived_step?.id) stepToWorkflow.set(wf.archived_step.id, wf.id);
-    if (wf.scheduled_step?.id) stepToWorkflow.set(wf.scheduled_step.id, wf.id);
+    // SDK returns camelCase properties
+    const pubStep = wf.publishedStep ?? wf.published_step;
+    const arcStep = wf.archivedStep ?? wf.archived_step;
+    const schStep = wf.scheduledStep ?? wf.scheduled_step;
+    if (pubStep?.id) stepToWorkflow.set(pubStep.id, wf.id);
+    if (arcStep?.id) stepToWorkflow.set(arcStep.id, wf.id);
+    if (schStep?.id) stepToWorkflow.set(schStep.id, wf.id);
   }
+  console.log(`stepToWorkflow populated: ${stepToWorkflow.size} entries`);
 }
 
 // ---- Utils ----

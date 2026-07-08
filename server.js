@@ -1,11 +1,12 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createRequire } from "module";
 import { createManagementClient } from "@kontent-ai/management-sdk";
 
+const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -25,12 +26,12 @@ let typeLinkElementMap = new Map();            // typeCodename -> { linked:Set, 
 let stepToWorkflow = new Map();                // stepId -> workflowId mapping from live API
 
 // ---- Load languages & workflow (for UI only) ----
-const languagesJson = JSON.parse(fs.readFileSync(path.join(__dirname, "languages.json"), "utf-8"));
+const languagesJson = require("./languages.json");
 const activeLanguages = (languagesJson.languages || [])
   .filter(l => l.is_active)
   .map(l => ({ id: l.id, name: l.name, codename: l.codename }));
 
-const localWfRaw = JSON.parse(fs.readFileSync(path.join(__dirname, "workflow.json"), "utf-8"));
+const localWfRaw = require("./workflow.json");
 const localWf = Array.isArray(localWfRaw) ? localWfRaw[0] : localWfRaw;
 
 const workflowStepsForUi = [

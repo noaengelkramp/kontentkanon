@@ -709,12 +709,15 @@
           const scheduleTimeISO = scheduleTime ? new Date(scheduleTime).toISOString() : null;
           
           // Batched workflow processing with progress tracking
+          const parsedIds = Array.from(new Set(String(ids || "").split(/[,\s]+/).map(x => x.trim()).filter(Boolean)));
+          const totalOps = parsedIds.length * langs.length;
           const allResults = [];
           let continueFrom = null;
           let batchCount = 0;
           const progressContainer = document.getElementById('browseProgress');
           const progressFill = document.getElementById('browseProgressFill');
           const progressText = document.getElementById('browseProgressText');
+          progressContainer.classList.remove('hidden');
           
           do {
             batchCount++;
@@ -740,19 +743,20 @@
             
             allResults.push(...(data.results || []));
             
-            // Update progress
-            if (data.incomplete) {
-              progressContainer.classList.remove('hidden');
-              progressFill.style.width = '50%';
-              progressFill.textContent = `${allResults.length} operations`;
-              progressText.textContent = `Processing batch ${batchCount}...`;
-            }
+            // Update progress with accurate percentage
+            const pct = totalOps > 0 ? Math.min(99, Math.round((allResults.length / totalOps) * 100)) : 50;
+            progressFill.style.width = pct + '%';
+            progressFill.textContent = pct + '%';
+            progressText.textContent = `${allResults.length} / ${totalOps} operations (batch ${batchCount})`;
             
             continueFrom = data.incomplete ? data.continueFrom : null;
           } while (continueFrom);
           
-          // Hide progress and show results
-          progressContainer.classList.add('hidden');
+          // Complete
+          progressFill.style.width = '100%';
+          progressFill.textContent = '100%';
+          progressText.textContent = `Complete: ${allResults.length} operations`;
+          setTimeout(() => progressContainer.classList.add('hidden'), 3000);
           log({ results: allResults });
         } else {
           const parsedIds = Array.from(new Set(String(ids || "").split(/[,\s]+/).map(x => x.trim()).filter(Boolean)));
@@ -918,12 +922,14 @@
           const scheduleTimeISO = scheduleTime ? new Date(scheduleTime).toISOString() : null;
           
           // Batched workflow processing with progress tracking
+          const totalOps = ids.length * langs.length;
           const allResults = [];
           let continueFrom = null;
           let batchCount = 0;
           const progressContainer = document.getElementById('browseProgress');
           const progressFill = document.getElementById('browseProgressFill');
           const progressText = document.getElementById('browseProgressText');
+          progressContainer.classList.remove('hidden');
           
           do {
             batchCount++;
@@ -949,19 +955,20 @@
             
             allResults.push(...(data.results || []));
             
-            // Update progress
-            if (data.incomplete) {
-              progressContainer.classList.remove('hidden');
-              progressFill.style.width = '50%';
-              progressFill.textContent = `${allResults.length} operations`;
-              progressText.textContent = `Processing batch ${batchCount}...`;
-            }
+            // Update progress with accurate percentage
+            const pct = totalOps > 0 ? Math.min(99, Math.round((allResults.length / totalOps) * 100)) : 50;
+            progressFill.style.width = pct + '%';
+            progressFill.textContent = pct + '%';
+            progressText.textContent = `${allResults.length} / ${totalOps} operations (batch ${batchCount})`;
             
             continueFrom = data.incomplete ? data.continueFrom : null;
           } while (continueFrom);
           
-          // Hide progress and show results
-          progressContainer.classList.add('hidden');
+          // Complete
+          progressFill.style.width = '100%';
+          progressFill.textContent = '100%';
+          progressText.textContent = `Complete: ${allResults.length} operations`;
+          setTimeout(() => progressContainer.classList.add('hidden'), 3000);
           log({ results: allResults });
         } else {
           const mode = action==="delete-item"?"item":"variant";

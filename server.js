@@ -333,8 +333,57 @@ async function getItemBundle(itemId, languageCodename) {
 }
 
 // ---- Meta endpoints for UI ----
-app.get("/api/meta/languages", (_req, res) => res.json({ languages: activeLanguages }));
-app.get("/api/meta/workflow-steps", (_req, res) => res.json({ steps: workflowStepsForUi }));
+app.get("/api/meta/languages", async (_req, res) => {
+  try {
+    if (process.env.KONTENT_ENV_ID && process.env.KONTENT_API_KEY) {
+      const { data } = await client.listLanguages().toPromise();
+      const items = data?.items || data || [];
+      if (items.length > 0) {
+        const languages = items
+          .filter(l => l.isActive ?? l.is_active)
+          .map(l => ({ id: l.id, name: l.name, codename: l.codename }));
+        return res.json({ languages });
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to fetch live languages from API, falling back to local JSON:", err.message);
+  }
+  // Fallback to local backup
+  res.json({ languages: activeLanguages });
+});
+
+app.get("/api/meta/workflow-steps", async (_req, res) => {
+  try {
+    if (process.env.KONTENT_ENV_ID && process.env.KONTENT_API_KEY) {
+      const { data } = await client.listWorkflows().toPromise();
+      const workflows = data?.items || data || [];
+      if (workflows.length > 0) {
+        // Use the first workflow (usually "Default" or primary)
+        const wf = workflows[0];
+        const steps = [
+          ...(wf.steps || []),
+          (wf.publishedStep ?? wf.published_step) ? { ...(wf.publishedStep ?? wf.published_step), published: true } : null,
+          (wf.archivedStep ?? wf.archived_step) ? { ...(wf.archivedStep ?? wf.archived_step), archived: true } : null,
+          (wf.scheduledStep ?? wf.scheduled_step) ? { ...(wf.scheduledStep ?? wf.scheduled_step), scheduled: true } : null
+        ].filter(Boolean).map(s => ({
+          id: s.id,
+          name: s.name,
+          codename: s.codename,
+          published: !!s.published,
+          archived: !!s.archived,
+          scheduled: !!s.scheduled
+        }));
+        if (steps.length > 0) {
+          return res.json({ steps });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to fetch live workflow steps from API, falling back to local JSON:", err.message);
+  }
+  // Fallback to local backup
+  res.json({ steps: workflowStepsForUi });
+});
 
 // ===== GRAPH TRAVERSAL =====
 app.post("/api/graph/query", async (req, res) => {

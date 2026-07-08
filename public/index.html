@@ -555,6 +555,25 @@
       return chunks;
     }
 
+    // Run an array of async tasks with a concurrency cap.
+    // onProgress(completed, total) is called after each task finishes.
+    async function runConcurrent(tasks, concurrency, fn, onProgress) {
+      const results = [];
+      let idx = 0;
+      let completed = 0;
+      async function worker() {
+        while (idx < tasks.length) {
+          const i = idx++;
+          results[i] = await fn(tasks[i]);
+          completed++;
+          if (onProgress) onProgress(completed, tasks.length);
+        }
+      }
+      const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, worker);
+      await Promise.all(workers);
+      return results;
+    }
+
     const out = document.getElementById("out");
     const errorContainer = document.getElementById("errorContainer");
     
@@ -708,51 +727,35 @@
           }
           const scheduleTimeISO = scheduleTime ? new Date(scheduleTime).toISOString() : null;
           
-          // Batched workflow processing with progress tracking
+          // One request per operation — no server-side batching, no timeouts.
           const parsedIds = Array.from(new Set(String(ids || "").split(/[,\s]+/).map(x => x.trim()).filter(Boolean)));
-          const totalOps = parsedIds.length * langs.length;
-          const allResults = [];
-          let continueFrom = null;
-          let batchCount = 0;
+          const operations = [];
+          for (const id of parsedIds) for (const lang of langs) operations.push({ id, lang });
+          const totalOps = operations.length;
+
           const progressContainer = document.getElementById('browseProgress');
           const progressFill = document.getElementById('browseProgressFill');
           const progressText = document.getElementById('browseProgressText');
           progressContainer.classList.remove('hidden');
-          
-          do {
-            batchCount++;
-            
-            const payload = {
-              itemIds: ids,
-              languageCodenames: langs,
-              workflowStepId: selectedWorkflowStep,
-              scheduleTime: scheduleTimeISO,
-              continueFrom
-            };
-            
-            const r = await fetch("/api/workflow", {
+          progressFill.style.width = '0%';
+          progressFill.textContent = '0%';
+          progressText.textContent = `0 / ${totalOps} operations`;
+
+          const allResults = await runConcurrent(operations, 3, async ({ id, lang }) => {
+            const r = await fetch("/api/workflow/single", {
               method: "POST",
-              headers: {"Content-Type": "application/json"},
-              body: JSON.stringify(payload)
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, lang, workflowStepId: selectedWorkflowStep, scheduleTime: scheduleTimeISO })
             });
-            
-            if (!r.ok) throw new Error(await r.text());
-            
-            const data = await r.json();
-            if (data.error) throw new Error(data.error);
-            
-            allResults.push(...(data.results || []));
-            
-            // Update progress with accurate percentage
-            const pct = totalOps > 0 ? Math.min(99, Math.round((allResults.length / totalOps) * 100)) : 50;
+            if (!r.ok) return { id, lang, status: "ERROR", message: `HTTP ${r.status}` };
+            return r.json();
+          }, (done, total) => {
+            const pct = Math.round((done / total) * 100);
             progressFill.style.width = pct + '%';
             progressFill.textContent = pct + '%';
-            progressText.textContent = `${allResults.length} / ${totalOps} operations (batch ${batchCount})`;
-            
-            continueFrom = data.incomplete ? data.continueFrom : null;
-          } while (continueFrom);
-          
-          // Complete
+            progressText.textContent = `${done} / ${total} operations`;
+          });
+
           progressFill.style.width = '100%';
           progressFill.textContent = '100%';
           progressText.textContent = `Complete: ${allResults.length} operations`;
@@ -921,50 +924,34 @@
           if (!selScheduleWrap.classList.contains('hidden') && !scheduleTime) { showError("Please select a schedule date and time"); return; }
           const scheduleTimeISO = scheduleTime ? new Date(scheduleTime).toISOString() : null;
           
-          // Batched workflow processing with progress tracking
-          const totalOps = ids.length * langs.length;
-          const allResults = [];
-          let continueFrom = null;
-          let batchCount = 0;
+          // One request per operation — no server-side batching, no timeouts.
+          const operations = [];
+          for (const id of ids) for (const lang of langs) operations.push({ id, lang });
+          const totalOps = operations.length;
+
           const progressContainer = document.getElementById('browseProgress');
           const progressFill = document.getElementById('browseProgressFill');
           const progressText = document.getElementById('browseProgressText');
           progressContainer.classList.remove('hidden');
-          
-          do {
-            batchCount++;
-            
-            const payload = {
-              itemIds: ids.join(","),
-              languageCodenames: langs,
-              workflowStepId: selectedWorkflowStepSel,
-              scheduleTime: scheduleTimeISO,
-              continueFrom
-            };
-            
-            const r = await fetch("/api/workflow", {
+          progressFill.style.width = '0%';
+          progressFill.textContent = '0%';
+          progressText.textContent = `0 / ${totalOps} operations`;
+
+          const allResults = await runConcurrent(operations, 3, async ({ id, lang }) => {
+            const r = await fetch("/api/workflow/single", {
               method: "POST",
-              headers: {"Content-Type": "application/json"},
-              body: JSON.stringify(payload)
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, lang, workflowStepId: selectedWorkflowStepSel, scheduleTime: scheduleTimeISO })
             });
-            
-            if (!r.ok) throw new Error(await r.text());
-            
-            const data = await r.json();
-            if (data.error) throw new Error(data.error);
-            
-            allResults.push(...(data.results || []));
-            
-            // Update progress with accurate percentage
-            const pct = totalOps > 0 ? Math.min(99, Math.round((allResults.length / totalOps) * 100)) : 50;
+            if (!r.ok) return { id, lang, status: "ERROR", message: `HTTP ${r.status}` };
+            return r.json();
+          }, (done, total) => {
+            const pct = Math.round((done / total) * 100);
             progressFill.style.width = pct + '%';
             progressFill.textContent = pct + '%';
-            progressText.textContent = `${allResults.length} / ${totalOps} operations (batch ${batchCount})`;
-            
-            continueFrom = data.incomplete ? data.continueFrom : null;
-          } while (continueFrom);
-          
-          // Complete
+            progressText.textContent = `${done} / ${total} operations`;
+          });
+
           progressFill.style.width = '100%';
           progressFill.textContent = '100%';
           progressText.textContent = `Complete: ${allResults.length} operations`;

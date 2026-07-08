@@ -514,114 +514,85 @@ app.post("/api/graph/query", async (req, res) => {
   }
 });
   
-app.post("/api/workflow", async (req, res) => {
+// Single-operation workflow endpoint — processes exactly one { id, lang } per request.
+// The client drives the loop; this keeps each Lambda invocation well within timeout limits.
+app.post("/api/workflow/single", async (req, res) => {
     try {
         await ensureInitialized();
         if (!client) return res.status(500).json({ error: "Client not initialized." });
 
-        const { itemIds, languageCodenames, workflowStepId, dryRun, scheduleTime, continueFrom } = req.body;
-        const ids = splitIds(itemIds);
-        const langs = languageCodenames || [];
-        if (!ids.length || !langs.length || !workflowStepId) return res.status(400).json({ error: "Missing parameters" });
+        const { id, lang, workflowStepId, scheduleTime, dryRun } = req.body;
+        if (!id || !lang || !workflowStepId) return res.status(400).json({ error: "Missing parameters: id, lang, workflowStepId" });
 
         const targetStep = workflowStepsForUi.find(s => s.id === workflowStepId);
         if (!targetStep) return res.status(400).json({ error: "Invalid workflow step" });
 
         if (stepToWorkflow.size === 0) await hydrateWorkflows();
 
-        // Build the full flat list of operations
-        const allOperations = [];
-        for (const id of ids) {
-            for (const lang of langs) {
-                allOperations.push({ id, lang });
-            }
-        }
+        if (dryRun) return res.json({ id, lang, status: "DRY_RUN" });
 
-        // Support continuation: resume from where we left off
-        const startIndex = continueFrom?.nextIndex ?? 0;
-        const slice = allOperations.slice(startIndex);
-
-        // Timeout guard — 8s hard cap so a single batch of retried requests
-        // can never consume the remaining Lambda time and trigger a gateway timeout.
-        // Each sub-batch is 3 concurrent max so backoff retries stay predictable.
-        const MAX_MS = 8000;
-        const startTime = Date.now();
-
-        const results = [];
-
-        if (dryRun) {
-            return res.json({ results: slice.map(({ id, lang }) => ({ id, lang, status: "DRY_RUN" })) });
-        }
-
-        // Process in sub-batches of 3, checking elapsed time before every batch
-        const BATCH = 3;
-        let processedCount = 0;
-
-        for (let i = 0; i < slice.length; i += BATCH) {
-            // Timeout check before every batch
-            if (Date.now() - startTime > MAX_MS) {
-                const nextIndex = startIndex + processedCount;
-                console.warn(`Workflow timeout guard hit after ${processedCount} ops. Returning continuation at index ${nextIndex}.`);
-                return res.json({
-                    results,
-                    incomplete: true,
-                    continueFrom: { nextIndex }
-                });
-            }
-
-            const batch = slice.slice(i, i + BATCH);
-            const batchResults = await runWithConcurrency(batch, 3, async ({ id, lang }) => {
-                try {
-                    if (targetStep.published) {
-                        if (scheduleTime) {
-                            await backoff(() => client.publishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ scheduled_to: scheduleTime }).toPromise());
-                            return { id, lang, status: "SCHEDULED" };
-                        }
-                        await backoff(() => client.publishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({}).toPromise());
-                        return { id, lang, status: "PUBLISHED" };
-                    }
-                    if (targetStep.archived) {
-                        await backoff(() => client.unpublishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({}).toPromise());
-                        return { id, lang, status: "UNPUBLISHED" };
-                    }
-                    if (targetStep.scheduled) {
-                        if (!scheduleTime) throw new Error("Schedule time required");
-                        await backoff(() => client.publishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ scheduled_to: scheduleTime }).toPromise());
-                        return { id, lang, status: "SCHEDULED" };
-                    }
-
-                    // Regular workflow step
-                    const wfId = stepToWorkflow.get(workflowStepId);
-                    if (!wfId) throw new Error("Cannot resolve workflow");
-
-                    try {
-                        await backoff(() => client.changeWorkflowOfLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ workflow_identifier: { id: wfId }, step_identifier: { id: workflowStepId } }).toPromise());
-                        return { id, lang, status: "MOVED" };
-                    } catch (changeError) {
-                        const errorCode = changeError?.response?.data?.error_code || changeError?.originalError?.response?.data?.error_code;
-                        if (errorCode === 4040012) {
-                            await backoff(() => client.createNewVersionOfLanguageVariant().byItemId(id).byLanguageCodename(lang).toPromise());
-                            const draftStep = workflowStepsForUi.find(s => s.codename === 'draft');
-                            if (workflowStepId !== draftStep?.id) {
-                                await backoff(() => client.changeWorkflowOfLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ workflow_identifier: { id: wfId }, step_identifier: { id: workflowStepId } }).toPromise());
-                            }
-                            return { id, lang, status: "NEW_VERSION_CREATED" };
-                        }
-                        throw changeError;
-                    }
-                } catch (e) {
-                    const errorCode = e?.response?.data?.error_code || e?.originalError?.response?.data?.error_code;
-                    const errorMsg = e?.response?.data?.message || e?.originalError?.response?.data?.message || e?.message || 'Unknown error';
-                    if (errorCode === 215) return { id, lang, status: "ALREADY_IN_STATE", message: "Item already in target workflow state" };
-                    return { id, lang, status: "ERROR", message: errorMsg, errorCode };
+        try {
+            if (targetStep.published) {
+                if (scheduleTime) {
+                    await backoff(() => client.publishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ scheduled_to: scheduleTime }).toPromise());
+                    return res.json({ id, lang, status: "SCHEDULED" });
                 }
-            });
+                await backoff(() => client.publishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({}).toPromise());
+                return res.json({ id, lang, status: "PUBLISHED" });
+            }
+            if (targetStep.archived) {
+                await backoff(() => client.unpublishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({}).toPromise());
+                return res.json({ id, lang, status: "UNPUBLISHED" });
+            }
+            if (targetStep.scheduled) {
+                if (!scheduleTime) return res.status(400).json({ error: "Schedule time required" });
+                await backoff(() => client.publishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ scheduled_to: scheduleTime }).toPromise());
+                return res.json({ id, lang, status: "SCHEDULED" });
+            }
 
-            results.push(...batchResults);
-            processedCount += batch.length;
+            // Regular workflow step
+            const wfId = stepToWorkflow.get(workflowStepId);
+            if (!wfId) return res.status(400).json({ error: "Cannot resolve workflow for step" });
+
+            try {
+                await backoff(() => client.changeWorkflowOfLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ workflow_identifier: { id: wfId }, step_identifier: { id: workflowStepId } }).toPromise());
+                return res.json({ id, lang, status: "MOVED" });
+            } catch (changeError) {
+                const errorCode = changeError?.response?.data?.error_code || changeError?.originalError?.response?.data?.error_code;
+                if (errorCode === 4040012) {
+                    await backoff(() => client.createNewVersionOfLanguageVariant().byItemId(id).byLanguageCodename(lang).toPromise());
+                    const draftStep = workflowStepsForUi.find(s => s.codename === 'draft');
+                    if (workflowStepId !== draftStep?.id) {
+                        await backoff(() => client.changeWorkflowOfLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ workflow_identifier: { id: wfId }, step_identifier: { id: workflowStepId } }).toPromise());
+                    }
+                    return res.json({ id, lang, status: "NEW_VERSION_CREATED" });
+                }
+                throw changeError;
+            }
+        } catch (e) {
+            const errorCode = e?.response?.data?.error_code || e?.originalError?.response?.data?.error_code;
+            const errorMsg = e?.response?.data?.message || e?.originalError?.response?.data?.message || e?.message || 'Unknown error';
+            if (errorCode === 215) return res.json({ id, lang, status: "ALREADY_IN_STATE" });
+            return res.json({ id, lang, status: "ERROR", message: errorMsg, errorCode });
         }
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
 
-        res.json({ results, incomplete: false });
+// Keep /api/workflow for dry-run previews (no actual API calls, instant response)
+app.post("/api/workflow", async (req, res) => {
+    try {
+        await ensureInitialized();
+        const { itemIds, languageCodenames, workflowStepId, dryRun } = req.body;
+        if (!dryRun) {
+            return res.status(400).json({ error: "Use /api/workflow/single for live operations. /api/workflow is dry-run only." });
+        }
+        const ids = splitIds(itemIds);
+        const langs = languageCodenames || [];
+        const results = [];
+        for (const id of ids) for (const lang of langs) results.push({ id, lang, status: "DRY_RUN" });
+        res.json({ results });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }

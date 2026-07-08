@@ -1,5 +1,5 @@
 [build]
-  command = "npm install"
+  command = "npm install && cp server.js netlify/functions/server.js && cp languages.json netlify/functions/languages.json && cp workflow.json netlify/functions/workflow.json"
   functions = "netlify/functions"
   publish = "public"
 
@@ -8,7 +8,7 @@
 
 [functions]
   node_bundler = "esbuild"
-  included_files = ["languages.json", "workflow.json"]
+  external_node_modules = ["@kontent-ai/management-sdk"]
 
 [dev]
   port = 8888

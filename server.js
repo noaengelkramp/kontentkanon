@@ -847,8 +847,8 @@ app.post("/api/duplicate", async (req, res) => {
 
 export const handler = serverless(app);
 
-// Fallback to start standalone local server if file is executed directly (e.g., node server.js or npm start)
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Start standalone local server when run directly (not as a Netlify function)
+if (!process.env.NETLIFY && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => console.log(`✅ Standalone local server running at http://localhost:${PORT}`));
 }

@@ -1,55 +1,241 @@
+// Load environment variables more explicitly for serverless functions
+import { config } from 'dotenv';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+// Handle __dirname in serverless environment
+let functionDir;
+try {
+  if (typeof import.meta !== 'undefined' && import.meta.url) {
+    const __filename = fileURLToPath(import.meta.url);
+    functionDir = path.dirname(__filename);
+  } else {
+    functionDir = process.cwd();
+  }
+} catch (e) {
+  functionDir = process.cwd();
+}
+
+// Try loading .env from multiple possible locations (only for local dev)
+if (!process.env.NETLIFY) {
+  const envPaths = [
+    path.resolve(functionDir, '../../.env'),
+    path.resolve(functionDir, '.env'),
+    path.resolve(process.cwd(), '.env'),
+    '.env'
+  ];
+
+  for (const envPath of envPaths) {
+    try {
+      const result = config({ path: envPath });
+      if (!result.error) {
+        console.log(`Successfully loaded .env from: ${envPath}`);
+        break;
+      }
+    } catch (e) {
+      // Silent fail, try next path
+    }
+  }
+}
+
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import path from "path";
-import { fileURLToPath } from "url";
-import { createRequire } from "module";
+import fs from "fs";
 import { createManagementClient } from "@kontent-ai/management-sdk";
-
-const require = createRequire(import.meta.url);
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import serverless from "serverless-http";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public"))); // serves public/index.html
 
 // ---- Kontent client ----
-const client = createManagementClient({
-  environmentId: process.env.KONTENT_ENV_ID,
-  apiKey: process.env.KONTENT_API_KEY
-});
+let client;
+try {
+  if (!process.env.KONTENT_ENV_ID || !process.env.KONTENT_API_KEY) {
+    throw new Error("KONTENT_ENV_ID or KONTENT_API_KEY not set in environment variables.");
+  }
+  client = createManagementClient({
+    environmentId: process.env.KONTENT_ENV_ID,
+    apiKey: process.env.KONTENT_API_KEY
+  });
+} catch (e) {
+  console.error("[ERROR] Failed to initialize Kontent Management Client:", e.message);
+  client = null; 
+}
 
 // ===== CACHES =====
-let typeLinkElementMap = new Map();            // typeCodename -> { linked:Set, richtext:Set } (best-effort)
-let stepToWorkflow = new Map();                // stepId -> workflowId mapping from live API
+let stepToWorkflow = new Map();
+let cacheInitialized = false;
 
-// ---- Load languages & workflow (for UI only) ----
-const languagesJson = require("./languages.json");
-const activeLanguages = (languagesJson.languages || [])
-  .filter(l => l.is_active)
-  .map(l => ({ id: l.id, name: l.name, codename: l.codename }));
+// ---- Load languages & workflow data ----
+async function loadStaticData() {
+  try {
+    let languagesJson, localWfRaw;
+    
+    // Try to load from local files first (for dev)
+    let basePath;
+    if (process.env.NETLIFY_DEV) {
+      basePath = process.cwd();
+    } else if (process.env.NETLIFY) {
+      // In Netlify deployment, files should be in the same directory as the function
+      basePath = functionDir;
+    } else {
+      basePath = path.join(functionDir, '../..');
+      if (!fs.existsSync(path.join(basePath, "languages.json"))) {
+        basePath = process.cwd();
+      }
+    }
+    
+    console.log("Trying to load files from:", basePath);
+    
+    try {
+      const langPath = path.join(basePath, "languages.json");
+      console.log("Languages file path:", langPath);
+      console.log("Languages file exists:", fs.existsSync(langPath));
+      languagesJson = JSON.parse(fs.readFileSync(langPath, "utf-8"));
+      console.log("Loaded languages from file:", languagesJson.languages?.length || 0);
+    } catch (e) {
+      console.log("Could not load languages.json from file:", e.message);
+      console.log("Fetching from API...");
+      // Fetch from API if file doesn't exist
+      if (client) {
+        try {
+          const response = await client.listLanguages().toPromise();
+          console.log("API response for languages:", response);
+          // The SDK returns data.items which are LanguageModel objects
+          const languagesData = response.data?.items || [];
+          // Convert LanguageModel objects to plain objects
+          languagesJson = { 
+            languages: languagesData.map(lang => ({
+              id: lang.id,
+              name: lang.name,
+              codename: lang.codename,
+              is_active: lang.isActive,
+              is_default: lang.isDefault,
+              fallback_language: lang.fallbackLanguage
+            }))
+          };
+          console.log("Fetched languages from API:", languagesJson.languages.length);
+        } catch (apiError) {
+          console.error("Could not fetch languages from API:", apiError.message);
+          console.error("Full error:", apiError);
+          languagesJson = { languages: [] };
+        }
+      } else {
+        console.error("Client not initialized, cannot fetch languages");
+        languagesJson = { languages: [] };
+      }
+    }
+    
+    try {
+      const wfPath = path.join(basePath, "workflow.json");
+      console.log("Workflow file path:", wfPath);
+      console.log("Workflow file exists:", fs.existsSync(wfPath));
+      localWfRaw = JSON.parse(fs.readFileSync(wfPath, "utf-8"));
+      console.log("Loaded workflow from file");
+    } catch (e) {
+      console.log("Could not load workflow.json from file:", e.message);
+      console.log("Fetching from API...");
+      // Fetch from API if file doesn't exist
+      if (client) {
+        try {
+          const { data } = await client.listWorkflows().toPromise();
+          const workflows = data?.items || data || [];
+          // Use the first workflow (default workflow)
+          localWfRaw = workflows.length > 0 ? workflows[0] : { steps: [], published_step: null, archived_step: null, scheduled_step: null };
+          console.log("Fetched workflow from API");
+        } catch (apiError) {
+          console.error("Could not fetch workflows from API:", apiError.message);
+          localWfRaw = { steps: [], published_step: null, archived_step: null, scheduled_step: null };
+        }
+      } else {
+        console.error("Client not initialized, cannot fetch workflows");
+        localWfRaw = { steps: [], published_step: null, archived_step: null, scheduled_step: null };
+      }
+    }
 
-const localWfRaw = require("./workflow.json");
-const localWf = Array.isArray(localWfRaw) ? localWfRaw[0] : localWfRaw;
+    return { languagesJson, localWfRaw };
+  } catch (e) {
+    console.error("Error loading static data:", e);
+    
+    // Last resort: try to fetch everything from API
+    if (client) {
+      console.log("Attempting to fetch all data from API as fallback...");
+      try {
+        const [langResponse, wfResponse] = await Promise.all([
+          client.listLanguages().toPromise().catch(() => null),
+          client.listWorkflows().toPromise().catch(() => null)
+        ]);
+        
+        const languagesJson = langResponse ? 
+          { languages: langResponse.data?.items || langResponse.data || [] } : 
+          { languages: [] };
+          
+        const workflows = wfResponse ? (wfResponse.data?.items || wfResponse.data || []) : [];
+        const localWfRaw = workflows.length > 0 ? workflows[0] : { steps: [], published_step: null, archived_step: null, scheduled_step: null };
+        
+        console.log("Fallback fetch complete:", { 
+          languages: languagesJson.languages.length, 
+          hasWorkflow: !!localWfRaw.steps 
+        });
+        
+        return { languagesJson, localWfRaw };
+      } catch (apiError) {
+        console.error("Fallback API fetch failed:", apiError);
+      }
+    }
+    
+    return { 
+      languagesJson: { languages: [] }, 
+      localWfRaw: { steps: [], published_step: null, archived_step: null, scheduled_step: null }
+    };
+  }
+}
 
-const workflowStepsForUi = [
-  ...(localWf.steps || []),
-  localWf.published_step ? { ...localWf.published_step, published: true } : null,
-  localWf.archived_step ? { ...localWf.archived_step, archived: true } : null,
-  localWf.scheduled_step ? { ...localWf.scheduled_step, scheduled: true } : null
-].filter(Boolean).map(s => ({
-  id: s.id,
-  name: s.name,
-  codename: s.codename,
-  published: !!s.published,
-  archived: !!s.archived,
-  scheduled: !!s.scheduled
-}));
+let activeLanguages = [];
+let workflowStepsForUi = [];
+
+async function ensureInitialized() {
+  if (cacheInitialized) return;
+  
+  const { languagesJson, localWfRaw } = await loadStaticData();
+  
+  activeLanguages = (languagesJson.languages || [])
+    .filter(l => l.is_active)
+    .map(l => ({ id: l.id, name: l.name, codename: l.codename }));
+
+  const localWf = Array.isArray(localWfRaw) ? localWfRaw[0] : localWfRaw;
+
+  workflowStepsForUi = [
+    ...(localWf.steps || []),
+    localWf.published_step || localWf.publishedStep ? { 
+      ...(localWf.published_step || localWf.publishedStep), 
+      published: true 
+    } : null,
+    localWf.archived_step || localWf.archivedStep ? { 
+      ...(localWf.archived_step || localWf.archivedStep), 
+      archived: true 
+    } : null,
+    localWf.scheduled_step || localWf.scheduledStep ? { 
+      ...(localWf.scheduled_step || localWf.scheduledStep), 
+      scheduled: true 
+    } : null
+  ].filter(Boolean).map(s => ({
+    id: s.id,
+    name: s.name,
+    codename: s.codename,
+    published: !!s.published,
+    archived: !!s.archived,
+    scheduled: !!s.scheduled
+  }));
+
+  cacheInitialized = true;
+}
 
 // ===== HYDRATORS =====
 async function hydrateWorkflows() {
+  if (!client) return;
   stepToWorkflow = new Map();
   const { data } = await client.listWorkflows().toPromise();
   const workflows = data?.items || data || [];
@@ -58,32 +244,6 @@ async function hydrateWorkflows() {
     if (wf.published_step?.id) stepToWorkflow.set(wf.published_step.id, wf.id);
     if (wf.archived_step?.id) stepToWorkflow.set(wf.archived_step.id, wf.id);
     if (wf.scheduled_step?.id) stepToWorkflow.set(wf.scheduled_step.id, wf.id);
-  }
-  console.log(`Built stepToWorkflow mapping with ${stepToWorkflow.size} entries`);
-}
-
-async function hydrateTypeSchemas() {
-  try {
-    typeLinkElementMap.clear();
-    const { data } = await client.listContentTypes().toPromise();
-    const types = data?.items || data || [];
-    console.log("Processing types:", types.length);
-    
-    for (const t of types) {
-      const linked = new Set();
-      const richtext = new Set();
-      for (const el of (t.elements || [])) {
-        const code = el?.codename;
-        if (!code) continue;
-        if (el.type === "modular_content") linked.add(code);
-        if (el.type === "rich_text") richtext.add(code);
-      }
-      typeLinkElementMap.set(t.codename, { linked, richtext });
-      console.log(`Type ${t.codename}: linked=${linked.size}, richtext=${richtext.size}`);
-    }
-    console.log("Type schemas loaded:", typeLinkElementMap.size);
-  } catch (e) {
-    console.error("Type schema hydration failed:", e?.message || e);
   }
 }
 
@@ -97,30 +257,12 @@ async function backoff(fn, tries = 5, startMs = 500) {
   for (let i = 0; i < tries; i++) {
     try { return await fn(); }
     catch (e) {
-      const status = e?.originalError?.response?.status || e?.response?.status;
+      const status = e?.originalError?.response?.status || e?.response?.status || e?.status;
       if (![429, 500, 502, 503, 504].includes(status) || i === tries - 1) throw e;
       await new Promise(r => setTimeout(r, wait));
       wait = Math.min(wait * 2, 8000);
     }
   }
-}
-
-function isPublishGuardError(err) {
-  const msg = (err?.originalError?.response?.data?.message
-    || err?.response?.data?.message
-    || err?.message
-    || "").toLowerCase();
-  const code = err?.originalError?.response?.status || err?.response?.status;
-  return code === 400 || code === 409 || msg.includes("cannot change workflow step from publish");
-}
-
-async function createNewVersion(itemId, languageCodename) {
-  await backoff(() =>
-    client.createNewVersionOfLanguageVariant()
-      .byItemId(itemId)
-      .byLanguageCodename(languageCodename)
-      .toPromise()
-  );
 }
 
 async function runWithConcurrency(tasks, limit, fn) {
@@ -150,254 +292,232 @@ async function runWithConcurrency(tasks, limit, fn) {
 }
 
 // ===== GRAPH TRAVERSAL HELPERS =====
-
-// Extract linked item IDs from various shapes (linked-items, rich text, components, HTML fallback)
 function extractLinkedIdsFromValue(val) {
-  const ids = [];
-  if (!val) return ids;
-
-  console.log("Analyzing value:", typeof val, val);
-
-  // Handle different value structures
+    const ids = [];
+    if (!val) return ids;
   
-  // 1. Direct array of IDs (modular_content elements)
-  if (Array.isArray(val)) {
-    console.log("Processing array with", val.length, "items");
-    for (const v of val) {
-      if (typeof v === "string" && v.match(/^[0-9a-f-]{36}$/i)) {
-        console.log("Found direct ID:", v);
-        ids.push(v);
-      } else if (v?.id && typeof v.id === "string") {
-        console.log("Found object with ID:", v.id);
-        ids.push(v.id);
-      }
-    }
-  }
-
-  // 2. Rich text with linked_items or linked_item_ids
-  if (val && typeof val === "object") {
-    // Check for linked_item_ids array
-    if (Array.isArray(val.linked_item_ids)) {
-      console.log("Found linked_item_ids:", val.linked_item_ids.length);
-      ids.push(...val.linked_item_ids);
-    }
-    
-    // Check for linked_items array
-    if (Array.isArray(val.linked_items)) {
-      console.log("Found linked_items:", val.linked_items.length);
-      for (const item of val.linked_items) {
-        if (item?.id) ids.push(item.id);
-      }
-    }
-
-    // Check for components in rich text
-    if (Array.isArray(val.components)) {
-      console.log("Found components:", val.components.length);
-      for (const comp of val.components) {
-        // Components themselves have IDs
-        if (comp?.id) {
-          console.log("Found component ID:", comp.id);
-          ids.push(comp.id);
-        }
-        
-        // Components may also have elements with more linked items
-        if (Array.isArray(comp.elements)) {
-          for (const element of comp.elements) {
-            const subIds = extractLinkedIdsFromValue(element.value);
-            if (subIds.length) {
-              console.log("Found sub-component IDs:", subIds.length);
-              ids.push(...subIds);
-            }
-          }
-        }
-      }
-    }
-
-    // Check for modular_content array (alternative structure)
-    if (Array.isArray(val.modular_content)) {
-      console.log("Found modular_content:", val.modular_content.length);
-      for (const item of val.modular_content) {
-        if (item?.id) ids.push(item.id);
-      }
-    }
-  }
-
-  // 3. Fallback: parse HTML strings for data-item-id attributes
-  if (typeof val === "string") {
-    if (val.includes("data-item-id")) {
+    if (Array.isArray(val)) {
+        val.forEach(v => {
+            if (v?.id) ids.push(v.id);
+        });
+    } else if (typeof val === 'string' && val.includes('data-item-id')) {
       const re = /data-item-id="([0-9a-f-]{36})"/gi;
       let m;
       while ((m = re.exec(val)) !== null) {
-        console.log("Found HTML embedded ID:", m[1]);
         ids.push(m[1]);
       }
     }
-    
-    // Also check if the string itself is a UUID
-    if (val.match(/^[0-9a-f-]{36}$/i)) {
-      console.log("Value is direct UUID:", val);
-      ids.push(val);
-    }
-  }
-
-  const uniqueIds = [...new Set(ids)];
-  console.log("Extracted", uniqueIds.length, "unique IDs from value");
-  return uniqueIds;
+    return [...new Set(ids)];
 }
 
-// Flatten API variant elements into a simple map { elementId: value }
-// Note: Management API returns element IDs, not codenames in the response
-function readElementsMap(variant) {
-  const out = {};
-  (variant?.elements || []).forEach(el => {
-    const id = el?.element?.id;
-    if (id) {
-      console.log(`Element ${id}: value=`, el.value);
-      out[id] = el.value;
-    }
-  });
-  console.log("Elements map keys:", Object.keys(out));
-  return out;
-}
-
-// Resolve edge fields using element IDs (since Management API uses IDs, not codenames in responses)
-function getLinkElementCandidates(typeCodename, elementsMap) {
-  console.log(`Getting link candidates for type: ${typeCodename}`);
-  console.log(`Elements map has ${Object.keys(elementsMap).length} elements`);
-  
-  // Since Management API returns element IDs (not codenames), we need to check all elements by shape
-  const candidates = [];
-  
-  for (const [elementId, val] of Object.entries(elementsMap)) {
-    console.log(`Analyzing element ${elementId}:`, typeof val, Array.isArray(val) ? `array[${val.length}]` : 'non-array');
-    const extractedIds = extractLinkedIdsFromValue(val);
-    if (extractedIds.length > 0) {
-      console.log(`✓ Element ${elementId} contains ${extractedIds.length} linked items:`, extractedIds);
-      candidates.push(elementId);
-    }
-  }
-
-  console.log(`Final candidates: ${candidates.length} elements with links`);
-  return candidates;
-}
-
-// Fetch "full item view": item metadata + language variant + outgoing links
 async function getItemBundle(itemId, languageCodename) {
-  console.log(`Fetching bundle for item ${itemId} in ${languageCodename}`);
-  
-  // 1) metadata
-  let item = null;
-  try {
-    const { data } = await client.viewContentItem().byItemId(itemId).toPromise();
-    item = data || null;
-    console.log(`Item metadata retrieved: ${item?.name || 'unnamed'} (${item?.type?.codename})`);
-  } catch (e) {
-    console.error(`Failed to fetch item ${itemId}:`, e?.message);
-    // not found or no access
-    return { item: null, variant: null, links: [] };
-  }
-
-  // 2) language variant (elements)
-  let variant = null;
-  try {
-    const { data } = await client
-      .viewLanguageVariant()
-      .byItemId(itemId)
-      .byLanguageCodename(languageCodename)
-      .toPromise();
-    variant = data || null;
-    console.log(`Variant retrieved for ${languageCodename}, elements count:`, variant?.elements?.length || 0);
-  } catch (e) {
-    console.error(`Failed to fetch variant ${itemId}/${languageCodename}:`, e?.message);
-    // no variant in that language
-    return { item, variant: null, links: [] };
-  }
-
-  // 3) compute outgoing links from elements (linked items + rich text)
-  const elementsMap = readElementsMap(variant);
-  const edgeFields = getLinkElementCandidates(item?.type?.codename || "", elementsMap);
-  console.log(`Edge fields for ${item?.type?.codename}:`, edgeFields);
-
-  const links = new Set();
-  for (const field of edgeFields) {
-    const val = elementsMap[field];
-    const extractedIds = extractLinkedIdsFromValue(val);
-    console.log(`Field ${field} has ${extractedIds.length} linked items:`, extractedIds);
-    for (const id of extractedIds) {
-      links.add(id);
+    if (!client) return { item: null, variant: null, links: [] };
+    let item, variant = null;
+    try {
+      const { data } = await client.viewContentItem().byItemId(itemId).toPromise();
+      item = data || null;
+    } catch (e) {
+      if (e?.originalError?.response?.status !== 404) console.error(`[ERROR] Failed to fetch item ${itemId}:`, e?.message);
+      return { item: null, variant: null, links: [] };
     }
-  }
-
-  console.log(`Total outgoing links from ${itemId}:`, links.size);
-  return { item, variant, links: Array.from(links) };
+  
+    try {
+      const { data } = await client.viewLanguageVariant().byItemId(itemId).byLanguageCodename(languageCodename).toPromise();
+      variant = data || null;
+    } catch (e) {
+      if (e?.originalError?.response?.status !== 404) console.error(`[ERROR] Failed to fetch variant ${itemId}/${languageCodename}:`, e?.message);
+      return { item, variant: null, links: [] };
+    }
+  
+    const links = new Set();
+    if (variant?.elements) {
+        for (const el of variant.elements) {
+            extractLinkedIdsFromValue(el.value).forEach(id => links.add(id));
+        }
+    }
+    return { item, variant, links: Array.from(links) };
 }
 
-// ---- Meta endpoints for UI ----
-app.get("/api/meta/languages", async (_req, res) => {
-  try {
-    if (process.env.KONTENT_ENV_ID && process.env.KONTENT_API_KEY) {
-      const { data } = await client.listLanguages().toPromise();
-      const items = data?.items || data || [];
-      if (items.length > 0) {
-        const languages = items
-          .filter(l => l.isActive ?? l.is_active)
-          .map(l => ({ id: l.id, name: l.name, codename: l.codename }));
-        return res.json({ languages });
-      }
-    }
-  } catch (err) {
-    console.warn("Failed to fetch live languages from API, falling back to local JSON:", err.message);
+// Helper: Fetch multiple items in parallel with concurrency limit
+async function fetchItemBundlesBatch(itemIds, languageCodename, concurrency = 2) {
+  const results = [];
+  
+  for (let i = 0; i < itemIds.length; i += concurrency) {
+    const batch = itemIds.slice(i, i + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(id => getItemBundle(id, languageCodename))
+    );
+    results.push(...batchResults);
   }
-  // Fallback to local backup
-  res.json({ languages: activeLanguages });
-});
+  
+  return results;
+}
 
-app.get("/api/meta/workflow-steps", async (_req, res) => {
-  try {
-    if (process.env.KONTENT_ENV_ID && process.env.KONTENT_API_KEY) {
-      const { data } = await client.listWorkflows().toPromise();
-      const workflows = data?.items || data || [];
-      if (workflows.length > 0) {
-        // Use the first workflow (usually "Default" or primary)
-        const wf = workflows[0];
-        const steps = [
-          ...(wf.steps || []),
-          (wf.publishedStep ?? wf.published_step) ? { ...(wf.publishedStep ?? wf.published_step), published: true } : null,
-          (wf.archivedStep ?? wf.archived_step) ? { ...(wf.archivedStep ?? wf.archived_step), archived: true } : null,
-          (wf.scheduledStep ?? wf.scheduled_step) ? { ...(wf.scheduledStep ?? wf.scheduled_step), scheduled: true } : null
-        ].filter(Boolean).map(s => ({
-          id: s.id,
-          name: s.name,
-          codename: s.codename,
-          published: !!s.published,
-          archived: !!s.archived,
-          scheduled: !!s.scheduled
-        }));
-        if (steps.length > 0) {
-          return res.json({ steps });
+// ===== DUPLICATION LOGIC =====
+async function duplicateItemDeep(sourceItemId, sourceLanguage, targetLanguages, options) {
+    const {
+        namePrefix = "Copy of ",
+        nameSuffix = "",
+        nameOverrides = {},
+        collectionId = null,
+        existingIdMap,
+        duplicateLinkedItems = false,
+        itemsToDuplicate = [],
+        errors,
+        results,
+        currentDepth = 0,
+        maxDepth = 10,
+    } = options;
+
+    if (!client) {
+        errors.push({ itemId: sourceItemId, error: `Kontent Management Client failed to initialize.` });
+        return;
+    }
+
+    if (currentDepth >= maxDepth) return;
+    if (existingIdMap.has(sourceItemId)) return;
+    existingIdMap.set(sourceItemId, null);
+
+    let sourceItem, sourceVariant;
+    
+    try {
+        sourceItem = (await backoff(() => client.viewContentItem().byItemId(sourceItemId).toPromise())).data;
+
+        try {
+            sourceVariant = (await backoff(() => client.viewLanguageVariant().byItemId(sourceItemId).byLanguageCodename(sourceLanguage).toPromise())).data;
+        } catch (variantError) {
+            if (variantError?.originalError?.response?.status === 404) {
+                errors.push({ itemId: sourceItemId, itemName: sourceItem.name, error: `Skipped: source language '${sourceLanguage}' variant does not exist.`, skipped: true });
+                existingIdMap.delete(sourceItemId);
+                return;
+            }
+            throw variantError;
         }
-      }
+
+        if (duplicateLinkedItems && sourceVariant.elements) {
+            const linkedItemIdsToRecurse = new Set();
+            for (const element of sourceVariant.elements) {
+                extractLinkedIdsFromValue(element.value).forEach(id => linkedItemIdsToRecurse.add(id));
+            }
+            for (const linkedId of linkedItemIdsToRecurse) {
+                // Only recurse if item is in the selected list
+                if (itemsToDuplicate.includes(linkedId)) {
+                    await duplicateItemDeep(linkedId, sourceLanguage, targetLanguages, { ...options, currentDepth: currentDepth + 1 });
+                }
+            }
+        }
+
+        const newName = nameOverrides[sourceItemId] || `${namePrefix}${sourceItem.name}${nameSuffix}`;
+        const typeReference = sourceItem.type.codename ? { codename: sourceItem.type.codename } : { id: sourceItem.type.id };
+
+        const newItemData = { name: newName, type: typeReference };
+        if (collectionId) {
+            newItemData.collection = { id: collectionId };
+        } else if (sourceItem.collection?.id && sourceItem.collection.id !== '00000000-0000-0000-0000-000000000000') {
+            newItemData.collection = { id: sourceItem.collection.id };
+        }
+        if (Array.isArray(sourceItem.sitemap_locations) && sourceItem.sitemap_locations.length > 0) {
+          newItemData.sitemap_locations = sourceItem.sitemap_locations;
+        }
+
+        const newItem = (await backoff(() => client.addContentItem().withData(newItemData).toPromise())).data;
+
+        existingIdMap.set(sourceItemId, newItem.id);
+        results.push({ sourceId: sourceItemId, sourceName: sourceItem.name, newId: newItem.id, newName: newItem.name, type: sourceItem.type.codename });
+
+        const upsertPayload = {};
+        const newElements = [];
+
+        if (sourceVariant.elements) {
+          for (const element of sourceVariant.elements) {
+              if (element.mode === 'autogenerated') {
+                  newElements.push({ element: { id: element.element.id }, mode: 'autogenerated' });
+                  continue;
+              }
+              let newValue = element.value;
+              const originalLinkedIds = extractLinkedIdsFromValue(element.value);
+              if (originalLinkedIds.length > 0) {
+                  const combinedIds = new Set();
+                  originalLinkedIds.forEach(id => {
+                      // If item was selected for duplication AND has been duplicated, use new ID
+                      if (itemsToDuplicate.includes(id) && existingIdMap.has(id) && existingIdMap.get(id)) {
+                          combinedIds.add(existingIdMap.get(id));
+                      } else {
+                          // Otherwise keep original
+                          combinedIds.add(id);
+                      }
+                  });
+                  newValue = Array.from(combinedIds).map(id => ({ id }));
+              }
+              newElements.push({ element: { id: element.element.id }, value: newValue });
+          }
+        }
+        upsertPayload.elements = newElements;
+
+        const draftStep = workflowStepsForUi.find(s => s.codename === 'draft');
+        if (draftStep && stepToWorkflow.has(draftStep.id)) {
+            upsertPayload.workflow = {
+                workflow_identifier: { id: stepToWorkflow.get(draftStep.id) },
+                step_identifier: { id: draftStep.id },
+            };
+        }
+
+        for (const targetLang of targetLanguages) {
+            const url = `https://manage.kontent.ai/v2/projects/${process.env.KONTENT_ENV_ID}/items/${newItem.id}/variants/codename/${targetLang}`;
+            const fetchOptions = {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${process.env.KONTENT_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(upsertPayload)
+            };
+            await backoff(async () => {
+                const response = await fetch(url, fetchOptions);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    const error = new Error(`Upsert failed: ${errorData.message || response.statusText}`);
+                    error.status = response.status;
+                    throw error;
+                }
+                return response.json();
+            });
+        }
+    } catch (error) {
+        errors.push({
+            itemId: sourceItemId,
+            itemName: sourceItem?.name || '(unknown)',
+            error: error.message || 'An unknown error occurred.',
+        });
+        if (existingIdMap.get(sourceItemId) === null) {
+            existingIdMap.delete(sourceItemId);
+        }
     }
-  } catch (err) {
-    console.warn("Failed to fetch live workflow steps from API, falling back to local JSON:", err.message);
-  }
-  // Fallback to local backup
-  res.json({ steps: workflowStepsForUi });
+}
+
+// ===== API ENDPOINTS =====
+app.get("/api/meta/languages", async (_req, res) => { 
+  await ensureInitialized(); 
+  res.json({ languages: activeLanguages }); 
 });
 
-// ===== GRAPH TRAVERSAL =====
+app.get("/api/meta/workflow-steps", async (_req, res) => { 
+  await ensureInitialized(); 
+  res.json({ steps: workflowStepsForUi }); 
+});
+
+// ===== GRAPH TRAVERSAL WITH BATCHING =====
 app.post("/api/graph/query", async (req, res) => {
   try {
+    await ensureInitialized();
+    if (!client) return res.status(500).json({ error: "Client not initialized." });
+    
     const {
       rootItemIds = [],
       languageCodename,
-      layerElementCodename = "layer",  // optional
-      layerFilterIn,                   // optional
-      typeFilterIn,                    // optional
-      maxNodes = 2000
+      layerElementCodename = "layer",
+      layerFilterIn,
+      typeFilterIn,
+      maxNodes = 2000,
+      continueFrom = null  // For pagination: { processedIds: [], queuedIds: [] }
     } = req.body || {};
-
-    console.log("Graph query request:", { rootItemIds, languageCodename, layerElementCodename, layerFilterIn, typeFilterIn, maxNodes });
 
     if (!Array.isArray(rootItemIds) || !rootItemIds.length) {
       return res.status(400).json({ error: "Provide rootItemIds" });
@@ -406,271 +526,329 @@ app.post("/api/graph/query", async (req, res) => {
       return res.status(400).json({ error: "Provide languageCodename" });
     }
 
-    // make sure schemas are present for best edge detection
-    if (typeLinkElementMap.size === 0) {
-      console.log("Type schemas not loaded, hydrating...");
-      try { await hydrateTypeSchemas(); } catch (e) {
-        console.error("Failed to hydrate type schemas:", e);
-      }
-    }
+    // Track execution time to prevent timeouts
+    const startTime = Date.now();
+    // Very conservative timeouts: 15s for production, 20s for local/other
+    const maxExecutionTime = process.env.NETLIFY ? 15000 : 20000;
 
-    const queue = [...rootItemIds];
-    const seen = new Set(rootItemIds);
+    // Initialize or continue from previous state
+    const seen = continueFrom?.processedIds 
+      ? new Set([...continueFrom.processedIds, ...continueFrom.queuedIds]) 
+      : new Set(rootItemIds);
+    const queue = continueFrom?.queuedIds ? [...continueFrom.queuedIds] : [...rootItemIds];
     const results = [];
+    
+    // Process in batches with parallel fetching
+    // Small batches to avoid timeout
+    const BATCH_SIZE = 3; // Process only 3 items at a time
 
-    console.log(`Starting graph traversal with ${queue.length} root items`);
-
-    while (queue.length && results.length < maxNodes) {
-      const id = queue.shift();
-      console.log(`Processing item ${id} (queue: ${queue.length}, results: ${results.length})`);
-      
-      const { item, variant, links } = await getItemBundle(id, languageCodename);
-      if (!item) {
-        console.log(`Skipping ${id} - no item data`);
-        continue;
+    while (queue.length > 0 && results.length < maxNodes) {
+      // Check timeout BEFORE starting batch processing
+      const elapsed = Date.now() - startTime;
+      if (elapsed > maxExecutionTime) {
+        console.warn(`Graph query timeout: processed ${results.length} items, ${queue.length} remaining (${elapsed}ms elapsed)`);
+        return res.json({
+          count: results.length,
+          items: results,
+          incomplete: true,
+          continueFrom: {
+            processedIds: Array.from(seen).filter(id => !queue.includes(id)),
+            queuedIds: queue
+          }
+        });
       }
-
-      const name = item?.name || "";
-      const typeCodename = item?.type?.codename || "";
-      const elementsMap = readElementsMap(variant);
-
-      // read layer values - since we only have element IDs, we'll check all elements for taxonomy-like values
-      console.log(`Looking for layer values in elements...`);
-      let layerValues = [];
       
-      // Check all elements for taxonomy/option-like structures
-      for (const [elementId, rawValue] of Object.entries(elementsMap)) {
-        if (!rawValue) continue;
+      // Get next batch
+      const batchIds = queue.splice(0, Math.min(BATCH_SIZE, queue.length));
+      
+      // Fetch batch in parallel with reduced concurrency
+      const bundles = await fetchItemBundlesBatch(batchIds, languageCodename, 2);
+      
+      console.log(`Processing batch: ${batchIds.length} items, got ${bundles.filter(b => b.item).length} valid bundles`);
+      
+      for (const { item, links } of bundles) {
+        if (!item) continue;
         
-        let elementLayerValues = [];
-        if (Array.isArray(rawValue)) {
-          // Handle array of taxonomies/options
-          elementLayerValues = rawValue.map(v => {
-            if (typeof v === "string") return v;
-            return v?.codename || v?.name || v?.value || String(v);
-          }).filter(Boolean);
-        } else if (typeof rawValue === "object" && rawValue !== null) {
-          // Handle single taxonomy/option object
-          const val = rawValue.codename || rawValue.name || rawValue.value;
-          if (val) elementLayerValues = [String(val)];
-        } else if (typeof rawValue === "string") {
-          // Handle direct string value
-          elementLayerValues = [rawValue];
-        }
-        
-        if (elementLayerValues.length > 0) {
-          console.log(`Found layer values in element ${elementId}:`, elementLayerValues);
-          // Use the first non-empty element we find, or combine them
-          if (layerValues.length === 0) {
-            layerValues = elementLayerValues;
+        console.log(`Item ${item.id}: ${item.name}, found ${links.length} linked items`);
+
+        results.push({
+          id: item.id,
+          name: item.name,
+          typeCodename: item.type.codename,
+          linkedCount: links.length,
+          layerValues: [] // Can be enhanced to extract layer values if needed
+        });
+
+        // Add linked items to queue
+        for (const childId of links) {
+          if (!seen.has(childId)) {
+            seen.add(childId);
+            queue.push(childId);
           }
         }
       }
       
-      console.log(`Final layer values:`, layerValues);
-
-      console.log(`Item ${id}: name="${name}", type="${typeCodename}", layers=[${layerValues.join(',')}], links=${links.length}`);
-
-      // add row
-      results.push({
-        id: item.id,
-        name,
-        typeCodename,
-        layerValues,
-        linkedCount: links.length
-      });
-
-      // enqueue children
-      for (const childId of links) {
-        if (!seen.has(childId) && results.length + queue.length < maxNodes) {
-          seen.add(childId);
-          queue.push(childId);
-          console.log(`Enqueued child ${childId}`);
-        }
-      }
+      console.log(`After batch: results=${results.length}, queue=${queue.length}, seen=${seen.size}`);
     }
 
-    console.log(`Graph traversal complete: ${results.length} items processed`);
-
-    // optional filters
+    // Apply filters
     const layerSet = new Set((Array.isArray(layerFilterIn) ? layerFilterIn : String(layerFilterIn || "").split(/[\s,]+/)).filter(Boolean).map(x => x.toLowerCase()));
-    const typeSet  = new Set((Array.isArray(typeFilterIn)  ? typeFilterIn  : String(typeFilterIn  || "").split(/[\s,]+/)).filter(Boolean).map(x => x.toLowerCase()));
+    const typeSet = new Set((Array.isArray(typeFilterIn) ? typeFilterIn : String(typeFilterIn || "").split(/[\s,]+/)).filter(Boolean).map(x => x.toLowerCase()));
 
     let out = results;
     if (layerSet.size) {
-      console.log(`Filtering by layers: ${Array.from(layerSet)}`);
       out = out.filter(r => (r.layerValues || []).some(v => layerSet.has(String(v).toLowerCase())));
-      console.log(`After layer filter: ${out.length} items`);
     }
     if (typeSet.size) {
-      console.log(`Filtering by types: ${Array.from(typeSet)}`);
       out = out.filter(r => typeSet.has(String(r.typeCodename).toLowerCase()));
-      console.log(`After type filter: ${out.length} items`);
     }
 
-    res.json({ count: out.length, items: out });
+    // Check if there might be more items to process
+    const hasMoreItems = queue.length > 0;
+    
+    res.json({ 
+      count: out.length, 
+      items: out,
+      incomplete: hasMoreItems,
+      continueFrom: hasMoreItems ? {
+        processedIds: Array.from(seen).filter(id => !queue.includes(id)),
+        queuedIds: queue
+      } : null
+    });
   } catch (e) {
     console.error("Error in graph query:", e);
     res.status(500).json({ error: e?.message || String(e) });
   }
 });
-
-// GET /api/item/:id?lang=en_GB
-// -> { item, variant, links:[childIds...] }
-app.get("/api/item/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
-    const languageCodename = req.query.lang || "English";
-    console.log(`API request for item ${id} in ${languageCodename}`);
-    const bundle = await getItemBundle(id, languageCodename);
-    res.json(bundle);
-  } catch (e) {
-    console.error("Error in /api/item:", e);
-    res.status(500).json({ error: e?.message || String(e) });
-  }
-});
-
-// ---- Actions ----
+  
 app.post("/api/workflow", async (req, res) => {
-  const { itemIds, languageCodenames, workflowStepId, dryRun } = req.body;
-
-  const ids = splitIds(itemIds);
-  const langs = Array.isArray(languageCodenames) ? languageCodenames.filter(Boolean) : [];
-  if (!ids.length) return res.status(400).json({ error: "No item IDs provided" });
-  if (!langs.length) return res.status(400).json({ error: "No language codenames provided" });
-  if (!workflowStepId) return res.status(400).json({ error: "No workflow step ID" });
-
-  const target = workflowStepsForUi.find(s => s.id === workflowStepId);
-  if (!target) return res.status(400).json({ error: "Invalid workflow step ID" });
-
-  if (stepToWorkflow.size === 0) {
-    try { await hydrateWorkflows(); } catch { /* ignore; we'll fail below if needed */ }
-  }
-  const wfId = stepToWorkflow.get(workflowStepId);
-  if (!wfId && !target.published && !target.archived) {
-    return res.status(400).json({ error: `Cannot resolve workflow for step ${workflowStepId}` });
-  }
-
-  const tasks = [];
-  for (const id of ids) {
-    for (const lang of langs) {
-      tasks.push({ id, lang });
-    }
-  }
-
-  const results = await runWithConcurrency(tasks, 5, async ({ id, lang }) => {
     try {
-      if (dryRun) return { id, lang, status: "DRY_RUN" };
+        await ensureInitialized();
+        if (!client) return res.status(500).json({ error: "Client not initialized." });
+        const { itemIds, languageCodenames, workflowStepId, dryRun, scheduleTime } = req.body;
+        const ids = splitIds(itemIds);
+        const langs = languageCodenames || [];
+        if (!ids.length || !langs.length || !workflowStepId) return res.status(400).json({ error: "Missing parameters" });
+        
+        const targetStep = workflowStepsForUi.find(s => s.id === workflowStepId);
+        if (!targetStep) return res.status(400).json({ error: "Invalid workflow step" });
 
-      // Published target -> use publish endpoint
-      if (target.published) {
-        await backoff(() =>
-          client.publishLanguageVariant()
-            .byItemId(id)
-            .byLanguageCodename(lang)
-            .withData({})
-            .toPromise()
-        );
-        return { id, lang, status: "PUBLISHED" };
-      }
+        if (stepToWorkflow.size === 0) await hydrateWorkflows();
+        
+        const results = [];
+        
+        // Build all operations first
+        const operations = [];
+        for (const id of ids) {
+            for (const lang of langs) {
+                if (dryRun) {
+                    results.push({ id, lang, status: "DRY_RUN" });
+                } else {
+                    operations.push({ id, lang });
+                }
+            }
+        }
 
-      // Archived target -> use unpublish endpoint
-      if (target.archived) {
-        await backoff(() =>
-          client.unpublishLanguageVariant()
-            .byItemId(id)
-            .byLanguageCodename(lang)
-            .withData({})
-            .toPromise()
-        );
-        return { id, lang, status: "UNPUBLISHED" };
-      }
+        // Execute all operations concurrently with a safe limit of 5 using runWithConcurrency
+        const executionResults = await runWithConcurrency(operations, 5, async ({ id, lang }) => {
+            try {
+                if (targetStep.published) {
+                    if (scheduleTime) {
+                        await backoff(() => client.publishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ scheduled_to: scheduleTime }).toPromise());
+                        return { id, lang, status: "SCHEDULED" };
+                    } else {
+                        await backoff(() => client.publishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({}).toPromise());
+                        return { id, lang, status: "PUBLISHED" };
+                    }
+                } else if (targetStep.archived) {
+                    await backoff(() => client.unpublishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({}).toPromise());
+                    return { id, lang, status: "UNPUBLISHED" };
+                } else if (targetStep.scheduled) {
+                    if (!scheduleTime) throw new Error("Schedule time required");
+                    await backoff(() => client.publishLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ scheduled_to: scheduleTime }).toPromise());
+                    return { id, lang, status: "SCHEDULED" };
+                } else {
+                    // Moving to a regular workflow step (like Draft)
+                    const wfId = stepToWorkflow.get(workflowStepId);
+                    if (!wfId) throw new Error("Cannot resolve workflow");
+                    
+                    try {
+                        // Try to change workflow directly first
+                        await backoff(() => client.changeWorkflowOfLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ workflow_identifier: { id: wfId }, step_identifier: { id: workflowStepId } }).toPromise());
+                        return { id, lang, status: "MOVED" };
+                    } catch (changeError) {
+                        const errorCode = changeError?.response?.data?.error_code || changeError?.originalError?.response?.data?.error_code;
+                        
+                        // If error is 4040012 (cannot change from published), create new version
+                        if (errorCode === 4040012) {
+                            // Create new version (unpublishes and moves to draft)
+                            await backoff(() => client.createNewVersionOfLanguageVariant().byItemId(id).byLanguageCodename(lang).toPromise());
+                            
+                            // If target is not draft, move to target step
+                            const draftStep = workflowStepsForUi.find(s => s.codename === 'draft');
+                            if (workflowStepId !== draftStep?.id) {
+                                await backoff(() => client.changeWorkflowOfLanguageVariant().byItemId(id).byLanguageCodename(lang).withData({ workflow_identifier: { id: wfId }, step_identifier: { id: workflowStepId } }).toPromise());
+                            }
+                            
+                            return { id, lang, status: "NEW_VERSION_CREATED" };
+                        }
+                        
+                        // Re-throw other errors
+                        throw changeError;
+                    }
+                }
+            } catch (e) {
+                // Check for specific error codes
+                const errorCode = e?.response?.data?.error_code || e?.originalError?.response?.data?.error_code;
+                const errorMsg = e?.response?.data?.message || e?.originalError?.response?.data?.message || e?.message || 'Unknown error';
+                
+                // Handle "already published" or "already in state" errors (215)
+                if (errorCode === 215) {
+                    return { id, lang, status: "ALREADY_IN_STATE", message: "Item already in target workflow state" };
+                }
+                
+                return { id, lang, status: "ERROR", message: errorMsg, errorCode };
+            }
+        });
 
-      // Normal step: try once; if blocked by Publish guard, create new version and retry once
-      const doMove = () =>
-        client.changeWorkflowOfLanguageVariant()
-          .byItemId(id)
-          .byLanguageCodename(lang)
-          .withData({
-            workflow_identifier: { id: wfId },
-            step_identifier: { id: workflowStepId }
-          })
-          .toPromise();
-
-      try {
-        await backoff(doMove);
-        return { id, lang, status: "MOVED", step: target.codename || target.name, newVersionCreated: false };
-      } catch (errFirst) {
-        if (!isPublishGuardError(errFirst)) throw errFirst;
-
-        await createNewVersion(id, lang);
-        await backoff(doMove);
-        return { id, lang, status: "MOVED", step: target.codename || target.name, newVersionCreated: true };
-      }
+        results.push(...executionResults);
+        
+        res.json({ results });
     } catch (e) {
-      const apiMsg = e?.originalError?.response?.data?.message
-        || e?.response?.data?.message
-        || e?.message
-        || String(e);
-      const validation = e?.originalError?.response?.data?.validation_errors
-        || e?.response?.data?.validation_errors;
-      return { id, lang, status: "ERROR", message: apiMsg, validation_errors: validation };
+        res.status(500).json({ error: e.message });
     }
-  });
-
-  res.json({ action: "workflow", results });
 });
-
+  
 app.post("/api/delete", async (req, res) => {
-  const { itemIds, deleteMode, languageCodenames, dryRun } = req.body;
-  const ids = splitIds(itemIds);
-  if (!ids.length) return res.status(400).json({ error: "No item IDs" });
-  if (!["item", "variant"].includes(deleteMode)) {
-    return res.status(400).json({ error: "deleteMode must be 'item' or 'variant'" });
-  }
+    try {
+        await ensureInitialized();
+        if (!client) return res.status(500).json({ error: "Client not initialized." });
+        const { itemIds, deleteMode, languageCodenames, dryRun } = req.body;
+        const ids = splitIds(itemIds);
+        if (!ids.length) return res.status(400).json({ error: "No IDs" });
+        
+        const results = [];
+        if (deleteMode === 'item') {
+            const tasks = ids.map(id => ({ id }));
+            const executionResults = await runWithConcurrency(tasks, 5, async ({ id }) => {
+                if (dryRun) return { id, status: "DRY_RUN_ITEM" };
+                try {
+                    await backoff(() => client.deleteContentItem().byItemId(id).toPromise());
+                    return { id, status: "DELETED_ITEM" };
+                } catch (e) { 
+                    return { id, status: "ERROR", message: e.message }; 
+                }
+            });
+            results.push(...executionResults);
+        } else {
+            const langs = languageCodenames || [];
+            if (!langs.length) return res.status(400).json({ error: "No languages" });
+            
+            const tasks = [];
+            for (const id of ids) {
+                for (const lang of langs) {
+                    tasks.push({ id, lang });
+                }
+            }
+            
+            const executionResults = await runWithConcurrency(tasks, 5, async ({ id, lang }) => {
+                if (dryRun) return { id, lang, status: "DRY_RUN_VARIANT" };
+                try {
+                    await backoff(() => client.deleteLanguageVariant().byItemId(id).byLanguageCodename(lang).toPromise());
+                    return { id, lang, status: "DELETED_VARIANT" };
+                } catch (e) { 
+                    return { id, status: "ERROR", message: e.message }; 
+                }
+            });
+            results.push(...executionResults);
+        }
+        res.json({ results });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
 
-  let results = [];
+app.post("/api/duplicate", async (req, res) => {
+  try {
+    await ensureInitialized();
+    if (!client) return res.status(500).json({ error: "Client not initialized." });
+    if (stepToWorkflow.size === 0) await hydrateWorkflows();
+    
+    const {
+      sourceItemId,
+      sourceItemIds,
+      sourceLanguage,
+      targetLanguages,
+      dryRun = false,
+      maxDepth = 10,
+    } = req.body;
 
-  if (deleteMode === "item") {
-    const tasks = ids.map(id => ({ id }));
-    results = await runWithConcurrency(tasks, 5, async ({ id }) => {
-      try {
-        if (dryRun) return { id, status: "DRY_RUN_ITEM" };
-        await backoff(() => client.deleteContentItem().byItemId(id).toPromise());
-        return { id, status: "DELETED_ITEM" };
-      } catch (e) {
-        return { id, status: "ERROR", message: e.message };
-      }
-    });
-  } else {
-    const langs = Array.isArray(languageCodenames) ? languageCodenames.filter(Boolean) : [];
-    if (!langs.length) return res.status(400).json({ error: "No languages for variant delete" });
+    const itemsToProcess = sourceItemIds || (sourceItemId ? [sourceItemId] : []);
+    if (itemsToProcess.length === 0) return res.status(400).json({ error: "sourceItemId or sourceItemIds is required" });
+    if (!sourceLanguage) return res.status(400).json({ error: "sourceLanguage is required" });
 
-    const tasks = [];
-    for (const id of ids) {
-      for (const lang of langs) {
-        tasks.push({ id, lang });
-      }
+    const finalTargetLangs = targetLanguages?.length ? targetLanguages : [sourceLanguage];
+
+    if (dryRun) {
+        const rootId = itemsToProcess[0];
+        const queue = [{ id: rootId, depth: 0 }];
+        const seen = new Set([rootId]);
+        const preview = [];
+  
+        while (queue.length > 0 && preview.length < maxDepth * 100) {
+          const { id, depth } = queue.shift();
+          if (depth >= maxDepth) continue;
+          try {
+            const { item: currentItem, links: currentLinks } = await getItemBundle(id, sourceLanguage);
+            if (currentItem) {
+              preview.push({ id: currentItem.id, name: currentItem.name, type: currentItem.type.codename, depth, linkedCount: currentLinks.length });
+              for (const linkedId of currentLinks) {
+                if (!seen.has(linkedId)) {
+                  seen.add(linkedId);
+                  queue.push({ id: linkedId, depth: depth + 1 });
+                }
+              }
+            }
+          } catch(e) {
+              console.error(`Dry run failed for item ${id}: ${e.message}`);
+          }
+        }
+        return res.json({ action: "duplicate", dryRun: true, preview, totalItems: preview.length, targetLanguages: finalTargetLangs });
     }
 
-    results = await runWithConcurrency(tasks, 5, async ({ id, lang }) => {
-      try {
-        if (dryRun) return { id, lang, status: "DRY_RUN_VARIANT" };
-        await backoff(() =>
-          client.deleteLanguageVariant().byItemId(id).byLanguageCodename(lang).toPromise()
-        );
-        return { id, lang, status: "DELETED_VARIANT" };
-      } catch (e) {
-        return { id, lang, status: "ERROR", message: e.message };
-      }
+    const results = [];
+    const errors = [];
+    const idMap = new Map();
+
+    // Pass itemsToDuplicate to the duplication function
+    for (const itemId of itemsToProcess) {
+      await duplicateItemDeep(itemId, sourceLanguage, finalTargetLangs, { 
+        ...req.body, 
+        results, 
+        errors, 
+        existingIdMap: idMap,
+        itemsToDuplicate: itemsToProcess 
+      });
+    }
+
+    res.json({
+      action: "duplicate",
+      success: errors.filter(e => !e.skipped).length === 0,
+      idMap: Object.fromEntries(idMap),
+      results,
+      errors,
+      totalDuplicated: results.length,
     });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-
-  res.json({ action: "delete", mode: deleteMode, results });
 });
 
-// ---- Boot ----
-const PORT = process.env.PORT || 3000;
-Promise.allSettled([hydrateWorkflows(), hydrateTypeSchemas()]).finally(() => {
-  app.listen(PORT, () => console.log(`✅ Server running at http://localhost:${PORT}`));
-});
+export const handler = serverless(app);
+
+// Fallback to start standalone local server if file is executed directly (e.g., node server.js or npm start)
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => console.log(`✅ Standalone local server running at http://localhost:${PORT}`));
+}
